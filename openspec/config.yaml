@@ -1,0 +1,89 @@
+# openspec/config.yaml — Project configuration for verified-scala3 schema
+#
+# This file is injected into ALL artifact instructions so the AI always
+# has project context. Modify the context and rules to match your project.
+
+schema: verified-scala3
+
+# ── Project Context ──────────────────────────────────────────────────────
+# Injected into every artifact instruction. Max 50KB.
+# Describe your tech stack, conventions, and constraints.
+context: |
+  This is a Scala 3 project in the banking/financial services domain
+  using the Typelevel ecosystem:
+
+  BUILD & LANGUAGE:
+  - Scala 3.8.4, sbt 1.12.x, JDK 25+
+  - Strict compiler flags: -Werror, -Wunused:all, -Wvalue-discard
+
+  CORE LIBRARIES:
+  - cats-effect 3.5.x (effect system — IO monad)
+  - fs2 3.x (functional streaming)
+  - http4s 0.23.x (HTTP server/client)
+  - smithy4s 0.18.x (contract-first types from Smithy IDL)
+  - Iron 2.6.x (refined types — compile-time constraints)
+  - otel4s 0.16.x (OpenTelemetry instrumentation)
+  - circe 0.14.x (JSON codecs)
+
+  TESTING:
+  - ScalaCheck 1.18.x (property-based testing)
+  - ScalaTest 3.2.x (test framework)
+  - Stryker4s 0.16.x (mutation testing)
+  - Stainless 0.9.9.0 (formal verification, PureScala subset)
+
+  STATIC ANALYSIS:
+  - Scalafix 0.14.x with DisableSyntax (no var/null/throw/return/while)
+  - WartRemover 3.2.x (no AsInstanceOf/IsInstanceOf/Null/Return/Var)
+  - Custom architecture Scalafix rules (layer deps, sealed types, effects)
+
+  INFRASTRUCTURE:
+  - OpenShift deployment (Helm charts)
+  - PostgreSQL (via Skunk or doobie)
+  - Kafka (via fs2-kafka)
+  - OTLP exporter to OpenTelemetry Collector
+
+  CODING CONVENTIONS:
+  - All domain types use opaque types with Iron constraints
+  - All service traits are tagless final: trait XService[F[_]: Async]
+  - All side effects in IO — no var, no null, no throw, no Future
+  - Errors modeled as sealed enums, not exceptions
+  - Smithy IDL is the contract source of truth for API operations
+  - Given/When/Then format for requirements and scenarios
+
+# ── Per-Artifact Rules ───────────────────────────────────────────────────
+# Injected into matching artifact instructions only.
+# Artifact ID must match an artifact in the schema (proposal, concept-inventory,
+# specs, design, implementation-order).
+rules:
+  proposal:
+    - Always include a verification strategy with ring checkboxes
+    - Reference concept-inventory.md for existing types before proposing new ones
+    - Include pseudocode decision with justification
+    - If the change affects API operations, Ring 5 (telemetry) MUST be checked
+
+  concept-inventory:
+    - Scan the ACTUAL project source tree, do not invent entries
+    - Include exact package paths (used for import statements in implementation)
+    - Include exact Iron constraints (used for type verification)
+    - For empty/new projects, create the tables with headers but no data rows
+
+  specs:
+    - Use Given/When/Then format for ALL requirements
+    - Every spec MUST have at least 2 ScalaCheck properties in the Properties section
+    - Properties must be INVARIANTS (forAll), not examples (specific values)
+    - Concepts Used table must reference exact entries from concept-inventory.md
+    - Concepts Introduced table is a COMMITMENT — implementation must honor it
+    - Include at least one error/edge case scenario per requirement
+
+  design:
+    - Package structure must define LayerDependencies Scalafix rule config
+    - Effect boundaries section must classify every module as pure or effectful
+    - Iron type strategy must justify every refined type AND every plain type
+    - Smithy model layout is REQUIRED if any spec has API operations
+    - Verification map must assign rings to every module
+
+  implementation-order:
+    - Topological sort by concept dependency, not alphabetical
+    - Simple specs before complex when no dependency constraint
+    - Pseudocode recommended for medium and high complexity specs
+    - Every spec in the specs/ directory must appear in the sequence
