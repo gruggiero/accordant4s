@@ -45,3 +45,11 @@
 
 | Generator | Type | Location | Introduced By |
 |-----------|------|----------|---------------|
+
+## Cats Effect Resources and Middleware
+
+<!-- Shared resources (HTTP clients, executors) and middleware that specs may
+     depend on. Empty until spec 5 (executor) / spec 6 (http4s Client) land. -->
+
+| Resource | Type | Purpose | Package | Introduced By |
+|----------|------|---------|---------|---------------|

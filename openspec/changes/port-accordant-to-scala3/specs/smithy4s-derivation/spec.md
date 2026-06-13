@@ -30,6 +30,8 @@ Lives in the `accordant4s-smithy4s` module.
 
 ### Requirement: One slot per Smithy endpoint
 
+`SmithyOps.forService` SHALL yield exactly one `EndpointSlot` per service endpoint, with `OperationName` equal to the Smithy operation id's name and `Req`/`Res` equal to the smithy4s-generated input/output types.
+
 **Given** a smithy4s `Service[Alg]`
 **When** `SmithyOps.forService(service)` is invoked
 **Then** it yields exactly one `EndpointSlot` per service endpoint, with `OperationName` equal to the Smithy operation id's name and `Req`/`Res` equal to the smithy4s-generated input/output types
@@ -47,6 +49,8 @@ Lives in the `accordant4s-smithy4s` module.
 **Then** the result is an empty slot list and `SpecBuilder.build` succeeds with an empty spec
 
 ### Requirement: Complete-or-fail spec assembly
+
+`SpecBuilder.build` SHALL return `Right(Spec[S])` iff EVERY endpoint received a behaviour, and MUST otherwise return `Left` listing the missing operation names.
 
 **Given** derived slots and a `SpecBuilder`
 **When** behaviours are assigned and `build` is called
@@ -68,6 +72,8 @@ Lives in the `accordant4s-smithy4s` module.
 
 ### Requirement: Derived HTTP binding
 
+`SmithyHttpBinding.forService` SHALL derive an `HttpBinding[S]` for the slots (routes from the HTTP traits, entity codecs from the smithy4s schemas) usable directly with `Http4sSut`, and MUST return `Left` naming operations that lack HTTP bindings.
+
 **Given** a Smithy service with HTTP traits (`@http(method, uri)`)
 **When** `SmithyHttpBinding.forService(service)` is invoked
 **Then** an `HttpBinding[S]` for the derived slots is produced (routes from the HTTP traits, entity codecs from the smithy4s schemas), usable directly with `Http4sSut`
@@ -84,9 +90,11 @@ Lives in the `accordant4s-smithy4s` module.
 **When** `SmithyHttpBinding.forService` is invoked
 **Then** the result is `Left` naming the operations lacking HTTP bindings (spec derivation still works; only the HTTP bridge is refused)
 
-## Properties (Ring 2)
+## Properties (Ring 3)
 
 ### Property: Slot set equals endpoint set
+
+**Generator strategy**: `genServiceFixture` — `Gen.oneOf` over a fixed pool of COMPILED test services (TestBank, empty service, non-HTTP service): smithy4s services cannot be synthesized at runtime, so the pool is the constructive domain; `classify` by endpoint count
 
 **Invariant**: For the TestBank service (and any service fixture), derived slot names are exactly the service's endpoint names — no extras, no omissions, no duplicates.
 
@@ -98,6 +106,8 @@ forAll(genServiceFixture) { svc =>
 ```
 
 ### Property: Build completeness
+
+**Generator strategy**: `genBehaviourSubset` — `Gen.someOf` over TestBank's endpoint behaviours (constructive subsets including empty and full)
 
 **Invariant**: `build` succeeds iff the assigned-behaviour set covers all endpoints; the `Left` lists exactly the uncovered names.
 
@@ -111,6 +121,8 @@ forAll(genBehaviourSubset) { assigned =>
 
 ### Property: Derived binding transparency
 
+**Generator strategy**: `genTestCase` over the TestBank spec (reuses spec 4 generators)
+
 **Invariant**: For all generated test cases, execution through the Smithy-derived HTTP binding over a conformant smithy4s stub equals execution through `RefSut`.
 
 ```
@@ -119,6 +131,25 @@ forAll(genTestCase) { tc =>
 }
 ```
 
+## Compile-Negative Obligations
+
+| Must NOT compile | Why | Test |
+|---|---|---|
+| assigning a behaviour `(WrongInput, S) => Outcome[...]` to the `Withdraw` slot | slot typing comes from the smithy4s endpoint schemas — contract/oracle drift is a type error (this realizes the spec's "compile-time evidence" claim) | `assertDoesNotCompile` stub |
+
+## Proof Obligations
+
+| Obligation | Source | Enforcement | Test/Artifact |
+|---|---|---|---|
+| Exactly one slot per endpoint, names match operation ids | Req: one slot per endpoint / Scenario: happy + Property: slot set | property test | "slot set equals endpoint set" |
+| Slot Req/Res ARE the smithy4s-generated types | Scenario: happy (compile evidence) | type system + compile-negative test | typed contract CN stub |
+| Empty service → empty slots, empty spec builds | Scenario: empty service | scenario test | "empty service" |
+| `build` = `Right` iff every endpoint behaved; `Left` lists missing | Req: complete-or-fail / Scenarios + Property: completeness | property test | "build completeness" |
+| Derived HTTP binding usable with `Http4sSut`, no hand-written codecs | Req: derived binding / Scenario: end-to-end | scenario test (smithy4s server stub) | "derived binding — end to end" |
+| Non-HTTP service → `Left` naming unbindable operations | Scenario: non-HTTP | scenario test | "non-HTTP service" |
+| Derived binding verdict-equivalent to RefSut | Property: transparency | property test | "derived binding transparency" |
+| No oracle/contract drift possible (new endpoint breaks build) | Rationale of complete-or-fail | property (completeness) + adversarial review (Ring 8 checks no default behaviour is injected) | Ring 8 report |
+
 ## Verification Rings
 
-Ring 0 ✅ · Ring 1 ✅ · Ring 1.5 — (separate module) · Ring 2 ✅ · Ring 3 — · Ring 4 — · Ring 5 — (accordant4s defines no API of its own)
+Ring 0 ✅ · Ring 1 ✅ · Ring 2 — (separate module) · Ring 3 ✅ · Ring 4 — (codecs are smithy4s-generated; covered by the transparency property) · Ring 5 — · Ring 6 — · Ring 7 — · Ring 8 ✅ · Ring 9 — (accordant4s defines no API of its own)

@@ -27,6 +27,8 @@ labeled `OperationCall`s with ScalaCheck `Gen` as the enumeration engine (report
 
 ### Requirement: Labeled operation calls
 
+`op.withInput(req, label)` SHALL produce an `OperationCall[S]` carrying the operation handle, the request, and the label, with `Req`/`Res` recoverable only through the call itself (no casting at use sites).
+
 **Given** a registered operation and a request value
 **When** `op.withInput(req, label)` is invoked
 **Then** an `OperationCall[S]` is produced that carries the operation handle, the request, and the label, with `Req`/`Res` recoverable only through the call itself (no casting at use sites)
@@ -47,6 +49,8 @@ labeled `OperationCall`s with ScalaCheck `Gen` as the enumeration engine (report
 
 ### Requirement: InputSet composition with label uniqueness
 
+Combining two input sets (`++`) SHALL preserve order and MUST reject duplicate labels with an `Either.Left` listing the colliding labels.
+
 **Given** two input sets
 **When** they are combined (`++`)
 **Then** the result preserves order and rejects duplicate labels with an `Either.Left` listing the collisions
@@ -64,6 +68,8 @@ labeled `OperationCall`s with ScalaCheck `Gen` as the enumeration engine (report
 **Then** the result is `Left` naming exactly the colliding label(s)
 
 ### Requirement: Gen-backed input sources
+
+`InputSet.fromGen(op, gen, n, seed)` SHALL deterministically produce at most `n` labeled calls from the seed, each labeled `"<opName>(<Show[Req]>)"`, with duplicate requests collapsed before labeling.
 
 **Given** a `Gen[Req]` and a sample size `n`
 **When** `InputSet.fromGen(op, gen, n, seed)` is invoked
@@ -83,9 +89,11 @@ labeled `OperationCall`s with ScalaCheck `Gen` as the enumeration engine (report
 **When** `fromGen` runs
 **Then** the input set contains exactly 1 call (duplicates collapsed, no label collision possible)
 
-## Properties (Ring 2)
+## Properties (Ring 3)
 
 ### Property: withInput roundtrip
+
+**Generator strategy**: constructive `genDepositRequest` (`Gen.posNum` amounts × `Gen.oneOf` account pool) and `genCallLabel` from `Gen.identifier` refined through `CallLabel.either` (constructive, no filtering)
 
 **Invariant**: For all operations, requests, and labels, the constructed call returns exactly what was put in.
 
@@ -97,6 +105,8 @@ forAll { (req: DepositRequest, label: CallLabel) =>
 ```
 
 ### Property: Composition is associative and label-preserving
+
+**Generator strategy**: `genInputSet` builds label-disjoint sets by namespacing labels with a per-set prefix — disjointness by construction, not `suchThat`; `classify` on set sizes
 
 **Invariant**: For label-disjoint sets, `(a ++ b) ++ c == a ++ (b ++ c)` and the labels of the union equal the concatenation of the labels.
 
@@ -111,6 +121,8 @@ forAll { (a: InputSet[BankState], b: InputSet[BankState], c: InputSet[BankState]
 
 ### Property: fromGen determinism and bound
 
+**Generator strategy**: `arbitrary[Long]` seeds × `Gen.chooseNum(1, 20)` for n × inner `Gen.choose(1, 100)` request payloads; the duplicate-collapse edge is covered by a `Gen.const` sub-case via `Gen.frequency`
+
 **Invariant**: Same `(gen, n, seed)` always yields the same input set, with size ≤ n and unique labels.
 
 ```
@@ -121,6 +133,25 @@ forAll { (seed: Long, n: PosInt) =>
 }
 ```
 
+## Compile-Negative Obligations
+
+| Must NOT compile | Why | Test |
+|---|---|---|
+| `CallLabel("")` (literal) | Iron `Not[Blank]`; dynamic labels via `CallLabel.either` | `assertDoesNotCompile` stub |
+| `deposit.withInput(WithdrawRequest(...), label)` | `withInput` is typed by the operation's `Req`; cross-operation request reuse is a type error | `assertDoesNotCompile` stub |
+
+## Proof Obligations
+
+| Obligation | Source | Enforcement | Test/Artifact |
+|---|---|---|---|
+| Call carries (op, req, label) intact, typed | Req: labeled calls / Scenario: happy + Property: roundtrip | property test + type system | "withInput roundtrip" |
+| Same op, many inputs coexist distinguishable by label | Scenario: many inputs | scenario test | "labeled calls — many inputs" |
+| `++` preserves order, rejects label collisions as `Left` | Req: composition / Scenarios: disjoint, colliding | scenario tests + Property: associativity | "composition" tests |
+| Label uniqueness inside any `InputSet` | type constraint | smart constructor (Either) + property (fromGen labels distinct) | "fromGen determinism and bound" |
+| `fromGen` deterministic for (gen, n, seed), size ≤ n | Req: gen-backed / Scenario: deterministic + Property | property test | "fromGen determinism and bound" |
+| Duplicate generated requests collapse before labeling | Scenario: generator collapse | scenario test | "gen-backed — collapse" |
+| Existential `Req`/`Res` never leak as casts | design constraint | type system + compile-negative test + adversarial review (Ring 8 greps for `asInstanceOf`) | typed contract CN stub |
+
 ## Verification Rings
 
-Ring 0 ✅ · Ring 1 ✅ · Ring 1.5 ✅ · Ring 2 ✅ · Ring 3 ✅ (80%, spec layer) · Ring 4 — · Ring 5 —
+Ring 0 ✅ · Ring 1 ✅ · Ring 2 ✅ · Ring 3 ✅ · Ring 4 — · Ring 5 ✅ (90–95%, spec layer) · Ring 6 — · Ring 7 — · Ring 8 ✅ · Ring 9 —

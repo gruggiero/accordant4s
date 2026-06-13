@@ -45,11 +45,11 @@ mirroring Accordant's assembly split so users only depend on what they use:
 
 ScalaCheck and circe at Compile scope in `core` is deliberate: accordant4s *is* a
 testing library — `Gen` powers response mocks and input sets; circe powers test-case
-persistence. This is recorded here so Ring 1.5 reviews don't flag it.
+persistence. This is recorded here so Ring 2 (architecture) reviews don't flag it.
 
-### Layers (Ring 1.5 LayerDependencies config)
+### Layers (Ring 2 LayerDependencies config)
 
-| Layer | Package | Depends On | Ring 1.5 Rule |
+| Layer | Package | Depends On | Ring 2 Rule |
 |-------|---------|-----------|---------------|
 | Domain | `io.gruggiero.accordant4s.domain` | Nothing (cats/iron data types only) | no outbound project imports |
 | Spec (service) | `io.gruggiero.accordant4s.spec` | Domain | `allowed: { from: spec, to: [domain] }` |
@@ -64,7 +64,7 @@ persistence. This is recorded here so Ring 1.5 reviews don't flag it.
 | `domain` | Domain | `Outcome`, `Verdict`, `SpecViolation`, `StateProfile`, `OperationName`, `CallLabel`, `MaxDepth`, `TestCase`, `ConcurrentTestCase`, `ExecutionReport`, `CoverageAlgorithm` |
 | `spec` | Spec | `Operation`, `Spec`, `OperationCall`, `InputSet`, the `expect` constructor DSL |
 | `engine` | Engine | `GraphExplorer`, `StateGraph`, `TestCaseGenerator`, `TestCaseExecutor`, `LinearizabilityChecker`, `SystemUnderTest` |
-| `engine.verified` | Engine (pure) | Ring 4 kernels: outcome evaluation, permutation search — Stainless-compatible subset, no fs2/IO imports |
+| `engine.verified` | Engine (pure) | Ring 6 kernels: outcome evaluation, permutation search — Stainless-compatible subset, no fs2/IO imports |
 | `persist` | Persistence | circe codecs for `TestCase`/`ConcurrentTestCase` file records |
 
 ## Effect Boundaries
@@ -72,20 +72,20 @@ persistence. This is recorded here so Ring 1.5 reviews don't flag it.
 **The oracle is pure.** Accordant's `Allows` is synchronous; the report (§5) floats an
 effect-aware `IO` oracle as a gain, but a pure oracle is what makes offline BFS
 exploration cheap (simulate thousands of transitions without I/O), keeps the kernel
-Stainless-eligible (Ring 4), and keeps verdicts deterministic. Decision: **pure oracle
+Stainless-eligible (Ring 6), and keeps verdicts deterministic. Decision: **pure oracle
 now**; an `F[_]`-oracle variant is a future change (would only affect `Spec.allows`'s
 signature via a `SpecF[F, S]` wrapper, not the ADTs).
 
-### Pure Code (Ring 4 candidates)
+### Pure Code (Ring 6 candidates)
 
-| Module / Function | Purpose | Ring 4? |
+| Module / Function | Purpose | Ring 6? |
 |-------------------|---------|---------|
 | `engine.verified.OutcomeEval.evaluate(outcome, res, state)` | match one outcome against one (response, state) | Yes |
 | `engine.verified.ProfileEval.allows(branches, res, profile)` | survivor-set computation over a profile | Yes |
 | `engine.verified.Linearization.exists(perms, step)` | ∃-permutation search (bounded) | Yes (best-effort) |
-| `domain.*` smart constructors | Iron-validated construction | No (trivial, covered by Ring 0) |
+| `domain.*` smart constructors | Iron-validated construction | No (trivial, covered by Ring 0 + compile-negative tests) |
 | `engine.GraphExplorer.bfs` (pure tail-recursive core) | bounded BFS over `(Spec, InputSet)` | No (uses `Gen` sampling for mocks — not PureScala) |
-| `engine.TestCaseGenerator.*` | path selection over a materialized graph | No (RandomWalk uses seeded RNG; Ring 2/3 cover it) |
+| `engine.TestCaseGenerator.*` | path selection over a materialized graph | No (RandomWalk uses seeded RNG; Rings 3/5 cover it) |
 
 ### Effectful Code (F[_] wrapped)
 
@@ -162,9 +162,27 @@ failed branches (this is the `ValidatedNel` upgrade over .NET's single message).
 `derive CanEqual`; user state `S` requires `CanEqual[S, S]` via the `Eq[S]`-adjacent
 given bundle `StateOps[S]` (one implicit bundle: `Eq[S], Hash[S], Show[S], CanEqual`).
 
+## Type Strategy — Invalid-State Prevention
+
+Placement of every core invariant on the v2 hierarchy
+(impossible > smart constructor > validator > fallback > silent mapping ◄ forbidden):
+
+| Invariant | Placement | Justification |
+|-----------|-----------|---------------|
+| `StateProfile` never empty | **Impossible** (opaque type, only `NonEmptyList`/`one` constructors) + compile-negative test | emptiness would make `allows` verdicts meaningless |
+| `StateProfile` never holds `Eq`-duplicates | **Smart constructor** (dedup on construction) + property test | dedup needs `Eq[S]` at runtime; cannot be type-level for arbitrary `S` |
+| `OperationName`/`CallLabel` non-blank | **Impossible for literals** (Iron compile-time) / **smart constructor** for dynamic values | both paths covered; compile-negative stubs prove the literal path |
+| `MaxDepth`/`MaxRetryCount` positive, `ParallelWidth` ≤ 4 | **Impossible** (Iron `Positive`, `Positive & LessEqual[4]`) | unbounded exploration / n! blow-up unrepresentable |
+| Req/Res match their operation | **Impossible** (typed handles + existential `OperationCall`) + compile-negative tests | no casts anywhere; Ring 8 greps for `asInstanceOf` regressions |
+| SUT response type matches the call | **Impossible** (dependent `execute(call): F[call.Res]`) | wrong-typed SUT unrepresentable |
+| Duplicate operation registration | **Smart constructor** (`register` returns `Either`) | name set is dynamic |
+| Spec/contract drift (smithy4s) | **Smart constructor** (`SpecBuilder.build` fails listing missing endpoints) + completeness property | endpoint set known only at build time |
+| Persistence schema version | **Validator** (explicit `VersionMismatch` error) | versions are data from disk; must be checked, never defaulted |
+| No silent fallback verdicts | **Forbidden pattern** — no `case _` in outcome matching; enforced by Ring 1 dangerous-pattern scan + Ring 8 | the oracle's entire value is refusing to guess |
+
 ## Smithy Model Layout
 
-accordant4s defines **no Smithy models of its own** (Ring 5 not applicable). The
+accordant4s defines **no Smithy models of its own** (Ring 9 not applicable). The
 `smithy4s` module *consumes* user services:
 
 | Service | Operations | Smithy File |
@@ -173,7 +191,7 @@ accordant4s defines **no Smithy models of its own** (Ring 5 not applicable). The
 
 Derivation surface: `SmithyOps.operations[Alg, S](service)(behaviours, mocks)` returns
 the typed slots; registering them all yields a spec whose operation set provably equals
-the service's endpoint set (a Ring 2 property of the smithy4s-derivation spec). The
+the service's endpoint set (a Ring 3 property of the smithy4s-derivation spec). The
 test fixture defines a small `TestBank` Smithy service under `smithy4s/src/test/smithy/`.
 
 ## Error Strategy
@@ -198,20 +216,51 @@ never throws (DisableSyntax enforces this anyway).
 | SUT failures | transport errors surface as a `Res` variant the user's check can match (timeouts are *data* — required for `OneOf` indefinite-failure modeling), never as `F.raiseError` mid-protocol | `Http4sSut` maps status/timeout to response ADT |
 | Persistence | `Either[PersistenceError, TestCase[S]]` | `TestCasePersistence.load` |
 
+## Compatibility Story (Ring 4)
+
+This change INTRODUCES the project's first persisted/wire formats; no legacy data
+exists, so the Ring 4 obligation is to create the baseline that future changes
+will be checked against:
+
+| Format | Introduced by | Ring 4 obligation |
+|--------|--------------|-------------------|
+| `TestCaseFileRecord` JSON (versioned, `version: 1`) | spec:test-generation | round-trip law property + fixture file `core/src/test/resources/fixtures/testcase-v1.json` committed as the decode baseline; unknown version → `VersionMismatch`, malformed → `DecodeFailed` |
+| `ConcurrentTestCaseFileRecord` JSON | spec:linearizability | same: round-trip property + `concurrent-testcase-v1.json` fixture baseline |
+| HTTP entities (user-defined request/response bodies) | spec:http-binding | wire round-trip law (`decodeEntity ∘ encode == Right`) + mapper totality over all statuses and malformed bodies |
+| smithy4s codecs | spec:smithy4s-derivation | generated by smithy4s from the IDL; covered by the derived-binding transparency property, no hand-maintained baseline |
+
+Unknown/missing-field behavior: decoding is strict for the versioned envelope
+(unknown `version` fails explicitly); user payload codecs follow the user's circe
+configuration and are outside this library's compatibility contract.
+
+## Typed Contract Placement
+
+Per capability-profile.md: contracts compile as real test sources —
+`src/test/scala/io/gruggiero/accordant4s/typecontract/<SpecName>TypeContract.scala`
+(spec 1, single-module) and `<module>/src/test/scala/.../typecontract/` after the
+restructure, verified with `sbt <module>/Test/compile`. Compile-negative obligations
+from each spec live in these files as `assertDoesNotCompile` stubs and stay test-side
+after implementation promotes the real declarations to main sources.
+
 ## Verification Map
 
-| Module | Ring 0 | Ring 1 | Ring 1.5 | Ring 2 | Ring 3 | Ring 4 | Ring 5 |
-|--------|--------|--------|----------|--------|--------|--------|--------|
-| `domain` (ADTs, Iron types) | ✅ | ✅ | ✅ | ✅ (constructors, profile dedup) | — | — | — |
-| `spec` (Operation, Spec, InputSet, DSL) | ✅ | ✅ | ✅ | ✅ | ✅ 80% | — | — |
-| `engine.verified` (oracle kernel) | ✅ | ✅ | ✅ | ✅ | ✅ 80% | ✅ | — |
-| `engine` graph + generation | ✅ | ✅ | ✅ | ✅ | ✅ 80% | — | — |
-| `engine` executor | ✅ | ✅ | ✅ | ✅ | — | — | — (otel4s: future) |
-| `engine.verified` linearization | ✅ | ✅ | ✅ | ✅ | ✅ 80% | ✅ best-effort | — |
-| `persist` | ✅ | ✅ | ✅ | ✅ (roundtrip) | — | — | — |
-| `munit` module | ✅ | ✅ | — | ✅ | — | — | — |
-| `http4s` module | ✅ | ✅ | — | ✅ (stubbed client) | — | — | — |
-| `smithy4s` module | ✅ | ✅ | — | ✅ | — | — | — |
+Rings: 0 compile · 1 lint · 2 architecture · 3 property tests · 4 compatibility ·
+5 mutation · 6 formal · 7 model checking · 8 adversarial review · 9 telemetry.
+Ring 8 applies to EVERY module (mandatory per spec); Ring 7 and Ring 9 apply to
+none (no model checker / no telemetry stack — see capability-profile.md).
+
+| Module | R0 | R1 | R2 | R3 | R4 | R5 | R6 | R8 |
+|--------|----|----|----|----|----|----|----|----|
+| `domain` (ADTs, Iron types) | ✅ | ✅ | ✅ | ✅ (constructors, profile dedup) | — | — | — | ✅ |
+| `spec` (Operation, Spec, InputSet, DSL) | ✅ | ✅ | ✅ | ✅ | — | ✅ 90–95% | — | ✅ |
+| `engine.verified` (oracle kernel) | ✅ | ✅ | ✅ | ✅ | — | ✅ 90–95% | ✅ best-effort | ✅ |
+| `engine` graph + generation | ✅ | ✅ | ✅ | ✅ | — | ✅ 90–95% | — | ✅ |
+| `engine` executor | ✅ | ✅ | ✅ | ✅ | — | — (effectful; fault properties cover) | — | ✅ |
+| `engine.verified` linearization | ✅ | ✅ | ✅ | ✅ | — | ✅ 90–95% | ✅ best-effort | ✅ |
+| `persist` | ✅ | ✅ | ✅ | ✅ (roundtrip) | ✅ (fixtures baseline) | — | — | ✅ |
+| `munit` module | ✅ | ✅ | — | ✅ | — | — | — | ✅ |
+| `http4s` module | ✅ | ✅ | — | ✅ (stubbed client) | ✅ (wire round-trips) | — | — | ✅ |
+| `smithy4s` module | ✅ | ✅ | — | ✅ | — | — | — | ✅ |
 
 ## Build Changes (spec 1, Ring 0 prerequisite)
 

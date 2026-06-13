@@ -32,6 +32,8 @@ persistence (Accordant's test-case file records) for reproducing failures.
 
 ### Requirement: Paths are graph-valid
 
+Every generated `TestCase` SHALL start at the graph's initial state, and each consecutive step MUST follow an existing edge of the graph.
+
 **Given** a state graph and any algorithm
 **When** test cases are generated
 **Then** every test case starts at the graph's initial state and each consecutive step follows an existing edge
@@ -49,6 +51,8 @@ persistence (Accordant's test-case file records) for reproducing failures.
 **Then** no generated test case can reference a state or call absent from the graph (type-level: generator consumes only `graph.edges`)
 
 ### Requirement: Coverage guarantees per algorithm
+
+`StateCoverage` SHALL cover every node, `TransitionCoverage` SHALL cover every edge (including self-loops), and `RandomWalk(seed, count)` SHALL produce exactly `count` cases deterministically from the seed.
 
 **Given** a state graph
 **When** `StateCoverage` runs, every node appears in at least one test case; **when** `TransitionCoverage` runs, every edge (including self-loops) appears in at least one test case; **when** `RandomWalk(seed, count)` runs, exactly `count` cases are produced deterministically from the seed
@@ -75,6 +79,8 @@ persistence (Accordant's test-case file records) for reproducing failures.
 
 ### Requirement: Test case persistence
 
+A persisted `TestCase[S]` SHALL round-trip to an equal value; an unknown schema version MUST fail with `VersionMismatch` and malformed JSON MUST fail with `DecodeFailed` — never an exception.
+
 **Given** user-supplied circe codecs for `S` and each request type
 **When** a `TestCase[S]` is saved and re-loaded
 **Then** the loaded value equals the original; loading a record with an unknown schema version fails with `VersionMismatch`, and malformed JSON fails with `DecodeFailed` — never an exception
@@ -93,9 +99,11 @@ persistence (Accordant's test-case file records) for reproducing failures.
 **When** decoded
 **Then** the result is `Left(VersionMismatch(999, 1))`
 
-## Properties (Ring 2)
+## Properties (Ring 3)
 
 ### Property: Path validity for all algorithms
+
+**Generator strategy**: `genStateGraph` (spec:state-graph fixture — graphs of 3–12 nodes built constructively from generated specs) × `genAlgorithm` (`Gen.oneOf` of StateCoverage, TransitionCoverage, seeded `RandomWalk`)
 
 **Invariant**: For every generated graph and every algorithm, every test case is an edge-connected path from the initial state.
 
@@ -108,6 +116,8 @@ forAll(genStateGraph, genAlgorithm) { (graph, algo) =>
 
 ### Property: StateCoverage covers all nodes / TransitionCoverage covers all edges
 
+**Generator strategy**: `genStateGraph` with `classify` on node/edge counts; self-loop-bearing graphs guaranteed by including a `Same`-outcome operation in the generating spec pool
+
 **Invariant**: The union of states (resp. edges) visited by the generated cases equals the graph's node (resp. edge) set.
 
 ```
@@ -119,6 +129,8 @@ forAll(genStateGraph) { graph =>
 
 ### Property: Persistence roundtrip
 
+**Generator strategy**: `genTestCase` derived from `genStateGraph` + path selection; request payloads cover unicode and empty-string edges via `Gen.frequency`
+
 **Invariant**: `decode(encode(tc)) == Right(tc)` for all generated test cases.
 
 ```
@@ -129,6 +141,8 @@ forAll(genTestCase) { tc =>
 
 ### Property: RandomWalk is a pure function of (graph, seed, count)
 
+**Generator strategy**: `genStateGraph` × `arbitrary[Long]` × `Gen.chooseNum(1, 10)` for count (constructive)
+
 **Invariant**: Equal inputs produce equal outputs; `count` is honored exactly.
 
 ```
@@ -138,6 +152,26 @@ forAll(genStateGraph, arbitrary[Long], genPosSmall) { (graph, seed, count) =>
 }
 ```
 
+## Compile-Negative Obligations
+
+None — this spec introduces no new refined literals or type-level exclusions;
+its constraints (schema `version` check) are explicit runtime checks
+(`PersistenceError.VersionMismatch`), specified in the error-path scenario.
+
+## Proof Obligations
+
+| Obligation | Source | Enforcement | Test/Artifact |
+|---|---|---|---|
+| Every test case is an edge-connected path from initial | Req: graph-valid paths / Scenario: happy + Property: path validity | property test | "path validity for all algorithms" |
+| Generator cannot reference states/calls outside the graph | Scenario: unreachable impossible | type system (generator consumes only `graph.edges`) + adversarial review (Ring 8 exercises direct construction) | typed contract + Ring 8 report |
+| StateCoverage hits every node | Req: coverage / Property: coverage | property test | "StateCoverage covers all nodes" |
+| TransitionCoverage hits every edge incl. self-loops | Scenario: error edges + Property: coverage | scenario + property test | same property |
+| Case count ≤ node count (path extension) | Scenario: minimality | scenario test | "minimality preference" |
+| RandomWalk deterministic, exact count | Scenario: determinism + Property: purity | property test | "RandomWalk is a pure function" |
+| `decode(encode(tc)) == Right(tc)` | Req: persistence / Scenario: roundtrip + Property | property test (round-trip law, Ring 4) | "persistence roundtrip" |
+| Unknown schema version → `VersionMismatch`, malformed JSON → `DecodeFailed`, never an exception | Scenario: version mismatch | scenario test + static rule (no-throw) | "version mismatch" |
+| Baseline fixtures exist for future compatibility checks | Ring 4 | compatibility fixtures created in this spec (first persisted format — establishes the Ring 4 baseline) | `core/src/test/resources/fixtures/testcase-v1.json` |
+
 ## Verification Rings
 
-Ring 0 ✅ · Ring 1 ✅ · Ring 1.5 ✅ · Ring 2 ✅ · Ring 3 ✅ (80%) · Ring 4 — · Ring 5 —
+Ring 0 ✅ · Ring 1 ✅ · Ring 2 ✅ · Ring 3 ✅ · Ring 4 ✅ (first persisted format — fixtures created as baseline) · Ring 5 ✅ (90–95%) · Ring 6 — · Ring 7 — · Ring 8 ✅ · Ring 9 —

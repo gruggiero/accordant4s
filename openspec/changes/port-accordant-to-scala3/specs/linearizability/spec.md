@@ -3,7 +3,7 @@
 Port of Accordant's concurrent testing (`GenerateConcurrentTests` + linearizability
 checking, tutorial 05): test cases shaped as sequential prefix → parallel section →
 sequential suffix; results are conformant iff SOME sequential ordering of the parallel
-operations explains the observed responses. The permutation search is a pure Ring 4
+operations explains the observed responses. The permutation search is a pure Ring 6
 kernel; only the parallel execution touches `IO`.
 
 ## Concepts Used (from inventory)
@@ -30,12 +30,14 @@ kernel; only the parallel execution touches `IO`.
 | `Linearization` | pure object (`engine.verified`) | `findOrdering(spec, profile, observed): Option[(perm, StateProfile[S])]` — ∃-permutation search |
 | `ConcurrentExecutor` | object | `IO.parTraverseN` execution of the parallel section + prefix/suffix replay + checker invocation |
 | `ConcurrentReport[S]` | enum | `Linearizable(witnessOrdering)` \| `RaceDetected(observed, orderingsTried, reproCase)` |
-| `NotLinearizable` | new `SpecViolation` variant | Carries observed results + tried orderings |
+| `NotLinearizable` | new `SpecViolation` variant | Carries observed results + tried orderings. **Enum-extension impact**: `SpecViolation` is a sealed enum with exhaustive matches (oracle reporting, munit message rendering); adding this variant makes those matches compile errors under `-Werror`, and each must add an explicit `NotLinearizable` case — `case _` fallbacks are forbidden (Ring 1 dangerous-pattern scan + Ring 8) |
 | `ConcurrentTestCaseFileRecord` | case class (`persist`) | circe persistence of failing concurrent cases (Accordant parity) |
 
 ## ADDED Requirements
 
 ### Requirement: Concurrent test case shape and generation
+
+`generateConcurrent` SHALL deterministically produce cases with a graph-valid prefix path, a parallel section of 2..width distinct calls applicable at the prefix's end state, and an observation suffix.
 
 **Given** a state graph, an input set, and a `ParallelWidth`
 **When** `generateConcurrent` runs
@@ -55,13 +57,15 @@ kernel; only the parallel execution touches `IO`.
 
 ### Requirement: Linearizability verdict
 
+`Linearization.findOrdering` SHALL return the FIRST permutation of the observed (call, response) pairs under which folding `spec.allows` stays `Conformant` (with the resulting profile), or `None` if every permutation deviates.
+
 **Given** observed results of the parallel section and the profile after the prefix
 **When** `Linearization.findOrdering` runs
 **Then** it returns the FIRST permutation of the observed (call, response) pairs under which folding `spec.allows` stays `Conformant` (with the resulting profile), or `None` if all permutations deviate
 
 **Rationale**: "Results must be explainable by some sequential ordering." Alice-200/Bob-409 is explainable (Alice first); both-200 on one slot is not — that's the race.
 
-#### Scenario: Happy path — valid interleaving found
+#### Scenario: Happy path — conformant interleaving found
 
 **Given** observed results Alice→200, Bob→409 after `CreateSlot("9am")`
 **When** the checker runs
@@ -75,11 +79,13 @@ kernel; only the parallel execution touches `IO`.
 
 #### Scenario: Edge case — ambiguity flows into the profile
 
-**Given** a parallel section whose witness orderings end in different states (e.g. two valid winners)
+**Given** a parallel section whose witness orderings end in different states (e.g. two orderings both conformant under `spec.allows`, with different winners)
 **When** more than one permutation is conformant
 **Then** the resulting profile is the deduplicated union of all witness end-profiles, and the suffix's oracle validation runs against that union (no false alarms from picking one winner arbitrarily)
 
 ### Requirement: Concurrent execution engine
+
+`ConcurrentExecutor.run` SHALL replay the prefix sequentially under oracle validation, launch the parallel calls concurrently (`parTraverseN`, no imposed ordering), capture the `ObservedResult`s, check linearizability, and replay the suffix against the post-parallel profile.
 
 **Given** a `ConcurrentTestCase` and a `SystemUnderTest[IO]`
 **When** `ConcurrentExecutor.run` executes
@@ -103,9 +109,11 @@ kernel; only the parallel execution touches `IO`.
 **When** it is saved via `ConcurrentTestCaseFileRecord`
 **Then** loading it reproduces the exact case and observations (Accordant's reproduction-of-nondeterminism workflow)
 
-## Properties (Ring 2)
+## Properties (Ring 3)
 
 ### Property: Sequential executions are always linearizable
+
+**Generator strategy**: constructive `genConcurrentCase` (prefix from graph paths, parallel section of `Gen.chooseNum(2, width)` distinct calls applicable at the prefix end-state, observation suffix) × `genPermutationOrder` (`Gen.oneOf` of index permutations)
 
 **Invariant**: If the parallel section is actually executed one-at-a-time in ANY order against a conformant SUT, the checker finds an ordering — sequential behaviour is never flagged as a race.
 
@@ -118,6 +126,8 @@ forAll(genConcurrentCase, genPermutationOrder) { (cc, order) =>
 
 ### Property: Checker is order-insensitive in its input
 
+**Generator strategy**: `genObservedResults` — (call, response) pairs with responses drawn from each operation's `mock` Gen; width ≤ 4 keeps ≤ 24 permutations, brute-force comparable
+
 **Invariant**: The verdict (Some/None) does not depend on the order in which observed results are presented.
 
 ```
@@ -128,6 +138,8 @@ forAll(genObservedResults, genPermutationOrder) { (observed, order) =>
 ```
 
 ### Property: Witness validity
+
+**Generator strategy**: `genObservedResults` as above
 
 **Invariant**: Whenever the checker returns a witness ordering, folding the oracle over exactly that ordering is `Conformant` and ends in the returned profile.
 
@@ -141,6 +153,8 @@ forAll(genObservedResults) { observed =>
 
 ### Property: Exhaustiveness on rejection
 
+**Generator strategy**: `genObservedResults` with `Gen.frequency` biased toward non-linearizable result sets (e.g. double-success); verdict cross-checked against explicit brute-force enumeration
+
 **Invariant**: When the checker returns `None`, every permutation of the observed results deviates under the oracle (cross-checked against brute-force enumeration for width ≤ 4).
 
 ```
@@ -152,6 +166,8 @@ forAll(genObservedResults) { observed =>
 
 ### Property: Concurrent persistence roundtrip
 
+**Generator strategy**: `genConcurrentRecord` from `genConcurrentCase` + observed results; covers unicode labels and timeout-response payloads
+
 **Invariant**: `decode(encode(record)) == Right(record)` for all concurrent file records.
 
 ```
@@ -160,7 +176,13 @@ forAll(genConcurrentRecord) { rec =>
 }
 ```
 
-## Formal Contracts (Ring 4)
+## Compile-Negative Obligations
+
+| Must NOT compile | Why | Test |
+|---|---|---|
+| `ParallelWidth(5)` / `ParallelWidth(0)` (literals) | Iron `Positive & LessEqual[4]` — the n! permutation blow-up is capped at the type level (4! = 24), not by a runtime guard | `assertDoesNotCompile` stubs |
+
+## Formal Contracts (Ring 6)
 
 `engine.verified.Linearization` (PureScala subset — List recursion, no IO/Gen):
 
@@ -177,6 +199,21 @@ def findOrdering(observed: List[Observed], profile: List[S]): Option[(List[Obser
 Best-effort: if Stainless rejects the full post-condition, verify `isPermutation` and
 profile non-emptiness only; record the downgrade in the checkpoint.
 
+## Proof Obligations
+
+| Obligation | Source | Enforcement | Test/Artifact |
+|---|---|---|---|
+| Concurrent cases: graph-valid prefix, 2..width parallel, suffix; deterministic | Req: shape / Scenarios: booking shape, width bound | scenario tests | "shape" tests |
+| Parallel section size ≤ width | Scenario: width bound | type system (`ParallelWidth`) + scenario test | CN stub + scenario |
+| Checker returns first conformant ordering or None | Req: verdict / Scenarios: witness, race + Property: witness validity | property test | "witness validity" |
+| `None` ⇒ ALL permutations deviate (no false races) | Property: exhaustiveness | property test — brute-force comparison at width ≤ 4 (serves as the Ring 7 surrogate: no model checker available) | "exhaustiveness on rejection" |
+| Sequentially-executed parallel sections never flagged | Property: sequential always linearizable | property test | same |
+| Verdict independent of observed-result order | Property: order-insensitive | property test | "order-insensitive" |
+| Multiple witnesses ⇒ profile = deduplicated union | Scenario: ambiguity union | scenario test + adversarial review (Ring 8: no arbitrary-winner shortcut) | "ambiguity union" |
+| Prefix/suffix oracle-validated, parallel via `parTraverseN` | Req: executor / Scenarios: atomic passes, racy caught | scenario tests (`Ref[IO]`-backed RefSut; racy SUT with read-then-write) | executor tests |
+| Failing cases persist and reload exactly | Scenario: persistence + Property: roundtrip | property test (round-trip law, Ring 4) + fixture baseline | "concurrent persistence roundtrip" |
+| `findOrdering` permutation/non-emptiness contracts | Formal Contracts | Stainless (Ring 6, best-effort; downgrade recorded) | `engine.verified.Linearization` |
+
 ## Verification Rings
 
-Ring 0 ✅ · Ring 1 ✅ · Ring 1.5 ✅ · Ring 2 ✅ · Ring 3 ✅ (80%, checker kernel) · Ring 4 ✅ best-effort (`Linearization`) · Ring 5 —
+Ring 0 ✅ · Ring 1 ✅ · Ring 2 ✅ · Ring 3 ✅ · Ring 4 ✅ (concurrent file-record fixtures) · Ring 5 ✅ (90–95%, checker kernel) · Ring 6 ✅ best-effort (`Linearization`) · Ring 7 — (no checker; exhaustiveness via the brute-force property) · Ring 8 ✅ · Ring 9 —

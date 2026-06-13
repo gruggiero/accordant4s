@@ -1,6 +1,6 @@
 # Proposal: Port Microsoft Accordant to Scala 3 (accordant4s)
 
-## Problem Statement
+## Why
 
 Microsoft Accordant is a .NET model-based testing framework whose central idea is the
 separation of the **oracle** (a declarative `Spec` mapping `(State, Request) →
@@ -15,13 +15,14 @@ structured `Expect` DSL with non-deterministic branching (`Expect.OneOf`), state
 tracking for indefinite failures, and a clean `allows` oracle API usable outside tests
 (see `docs/accordant-scala3-report.md` §4.2).
 
-The `verified-scala3` pipeline needs this as its missing **Ring 4.5**: end-to-end
-behavioural conformance testing of an assembled service, where the oracle is the same
-model an AI agent was given to implement. The oracle's verdict ("deviates at step N:
+The `verified-scala3` pipeline needs this as its missing behavioural-conformance
+layer (the report calls it "Ring 4.5" in its own pipeline numbering — unrelated to
+this schema's verification rings): end-to-end conformance testing of an assembled
+service, where the oracle is the same model an AI agent was given to implement. The oracle's verdict ("deviates at step N:
 expected X, got Y, reproducing path P") is agent-actionable semantic feedback that no
 existing ring produces.
 
-## Scope
+## What Changes
 
 This is a **targeted library**, not a 1:1 port (per report §7). We take Accordant's
 best ideas and express them natively in the Typelevel stack: immutable state with Iron
@@ -47,7 +48,7 @@ instead of imperative graph walking, and http4s/smithy4s instead of `HttpExecuta
   the oracle and is deferred to a future change.
 - **State visualization** (Accordant's graph rendering/CLI tooling).
 - **Effect-aware oracle** (`(Req, S) => IO[Outcome]`): the oracle is kept pure in this
-  change so it can drive offline BFS exploration and qualify for Ring 4; an `F[_]`
+  change so it can drive offline BFS exploration and qualify for Ring 6; an `F[_]`
   variant is a documented future extension (design.md §Effect Boundaries).
 - **Hermes skill wrapping** (report Phase 5) — pipeline integration is a separate change.
 - **Jepsen/Knossos integration** — the permutation checker is pure Scala; external
@@ -58,7 +59,7 @@ instead of imperative graph walking, and http4s/smithy4s instead of `HttpExecuta
 Eight delta specs implemented depth-first in dependency order. The foundation is a pure
 oracle kernel (`Outcome` evaluation over a `StateProfile`) — pure functions over
 immutable case-class state, which makes BFS exploration trivial (no I/O during
-simulation, mocks supply response-dependent values) and the kernel a Ring 4 candidate.
+simulation, mocks supply response-dependent values) and the kernel a Ring 6 candidate.
 Effects appear only at the engine boundary: fs2 streams for exploration/generation and
 `IO` for executing against a real SUT. Integration modules (munit, http4s, smithy4s)
 sit on top as separate sbt modules so library users only pay for what they use.
@@ -77,26 +78,48 @@ Key semantic carry-overs from Accordant, verified against the official docs:
 4. **Concurrent tests**: prefix establishes state, parallel section races operations,
    the checker searches for any conformant sequential ordering (linearizability).
 
+## Correctness Risk Level
+
+**HIGH** — accordant4s is itself a verification oracle: a bug here silently
+mis-verdicts every system tested with it. Specific high-risk traits: oracle/evaluator
+logic (`allows`, outcome matching), a permutation checker whose false positives mask
+races, and persistence schema for repro records. Fallback/default paths in branch
+matching are exactly the bug class Ring 8 exists for.
+
 ## Verification Strategy
 
-- [x] Ring 0: Compilation — strict scalac flags, Iron refined types
-- [x] Ring 1: Lint — Scalafix DisableSyntax, WartRemover
-- [x] Ring 1.5: Architecture — layer dependencies (domain → nothing, spec → domain, engine → domain+spec), sealed domain types, effect discipline
-- [x] Ring 2: Property-based tests — ScalaCheck invariants (mandatory, every spec)
-- [x] Ring 3: Mutation testing — Stryker4s, threshold 80% (oracle-core, state-graph, test-generation, linearizability — the pure logic kernels where mutants are meaningful)
-- [x] Ring 4: Formal verification — Stainless on the pure kernels only: outcome evaluation (`oracle-core`) and the permutation checker (`linearizability`); best-effort given Stainless's PureScala subset
-- [ ] Ring 5: Telemetry — NOT applicable: this change introduces a library, not API operations or event sequences. No Smithy service is exposed by accordant4s itself (the smithy4s-derivation spec *consumes* user Smithy models, it does not define any). otel4s instrumentation of the executor is future work.
+Ring availability per `capability-profile.md` — Stryker4s/Scalafix/WartRemover
+configs do not exist yet and are added by spec 1.
 
-### Pseudocode Phase
+- [x] Ring 0: Compilation — strict scalac flags (`-Werror`, `strictEquality`), Iron refined types
+- [x] Ring 1: Lint — Scalafix DisableSyntax + RemoveUnused, WartRemover, dangerous-pattern scan (config added by spec 1)
+- [x] Ring 2: Architecture — layer dependencies (domain → nothing, spec → domain, engine → domain+spec), sealed domain types, effect discipline (rules added by spec 1)
+- [x] Ring 3: Property-based tests — MANDATORY for all 8 specs (munit-scalacheck per detected stack); no waivers claimed
+- [x] Ring 4: Wire/persistence compatibility — applies to `test-generation` and `linearizability` (circe file records); fixtures created as the compatibility baseline since none exist yet
+- [x] Ring 5: Mutation testing — Stryker4s on the spec's changed files (dynamic targeting), thresholds 90–95% for pure kernels (`domain`, `spec`, `engine.verified`, generation), 80–90% for effectful engine code
+- [x] Ring 6: Formal verification — Stainless on the pure kernels only: outcome evaluation (`oracle-core`) and the permutation checker (`linearizability`); best-effort — Stainless is not currently installed (see capability-profile.md)
+- [ ] Ring 7: Model checking — no TLA+/Apalache available; the linearizability exhaustiveness invariant is instead enforced by a brute-force-comparison property (spec 8) and recorded as a test-enforced obligation
+- [x] Ring 8: Adversarial spec-compliance review — MANDATORY for all 8 specs
+- [ ] Ring 9: Telemetry — NOT applicable: this change introduces a library, not API operations or event sequences, and no telemetry stack is detected. No spec declares temporal properties. otel4s instrumentation of the executor is future work.
 
-- [x] Enable pseudocode for this change
+## Typed Contract Decision
 
-**Justification**: Every spec except `input-sets` and `http-binding` introduces new
-domain types AND non-trivial logic (profile-based oracle evaluation, BFS with
-canonicalization under `Eq`, coverage algorithms, permutation search). The existential
-typing of `OperationCall` (pairing an `Operation[Req, Res, S]` with its `Req` without
-leaking type parameters) is exactly the kind of type-level design that benefits from a
-compile-checked skeleton before implementation.
+The typed contract phase is MANDATORY for every code-changing spec. Decision per spec:
+
+| Spec | Contract | Justification |
+|------|----------|---------------|
+| oracle-core | **Full** | new domain ADTs, opaque types, error algebra, `Spec[S]` public API |
+| input-sets | **Full** | existential `OperationCall` encoding — the riskiest type-level design in the change |
+| state-graph | **Full** | new types + BFS signatures + fs2 facade boundary |
+| test-generation | **Full** | new types, coverage-algorithm API, persistence envelope (wire format) |
+| test-execution | **Full** | public `SystemUnderTest[F]` trait, executor signatures, munit module surface |
+| http-binding | **Full** | public binding API + transport-outcome error algebra |
+| smithy4s-derivation | **Full** | `Service`-introspection typing is the principal risk; compile evidence is the point |
+| linearizability | **Full** | new types + pure checker kernel signatures |
+
+No minimal contracts or waivers: every spec introduces new public types.
+Contracts live in the owning module's test sources (placement in
+capability-profile.md) and must compile via `sbt <module>/Test/compile`.
 
 ## Existing Concepts to Reuse
 
@@ -137,10 +160,10 @@ Directional preview — refined in the specs and design:
 
 | Risk | Mitigation |
 |------|------------|
-| Existential `OperationCall` typing fights `-language:strictEquality` and type inference | Pseudocode step compiles the type skeleton first; fall back to a sealed-trait-with-type-members encoding if match types get hairy |
+| Existential `OperationCall` typing fights `-language:strictEquality` and type inference | The mandatory typed contract compiles the type skeleton first (human-gated); fall back to a sealed-trait-with-type-members encoding if match types get hairy |
 | State-space explosion in BFS | `MaxDepth` is mandatory (Iron `Positive`), exploration is a lazy `fs2.Stream`, canonicalization via `cats.Eq` + `Hash` collapses revisits |
 | `n!` permutation blow-up in linearizability checker | Parallel sections bounded (Accordant uses pairs; we cap at a small `ParallelWidth`), short-circuit on first conformant ordering |
-| Stainless (Ring 4) may not accept the kernel as written (PureScala subset, Scala-version support) | Ring 4 scoped to two small pure functions in a `verified/`-style package; failure downgrades to Ring 2/3 coverage, recorded in the checkpoint |
-| Stryker4s not yet configured in build | Spec 1 adds the sbt plugin + config; if it proves incompatible with Scala 3.8.4, Ring 3 is marked ⏭️ per checkpoint with rationale |
+| Stainless (Ring 6) may not accept the kernel as written (PureScala subset, Scala-version support; not currently installed) | Ring 6 scoped to two small pure functions in a `verified/`-style package; failure downgrades to Ring 3/5 coverage, recorded in the checkpoint |
+| Stryker4s not yet configured in build | Spec 1 adds the sbt plugin + config; if it proves incompatible with Scala 3.8.4, Ring 5 is marked ⏭️ per checkpoint with rationale |
 | smithy4s `Service` introspection API churn (0.18.x) | Derivation kept in an isolated module; pinned version; compile-time-only dependency surface |
 | Dependency creep in core (circe, scalacheck at Compile scope) | Deliberate, documented in design.md: accordant4s is itself a testing library, so ScalaCheck `Gen` for mocks and circe for persistence are legitimate core dependencies |
