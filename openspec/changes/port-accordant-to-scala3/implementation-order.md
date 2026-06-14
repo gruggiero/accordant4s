@@ -68,7 +68,7 @@ paths under `core/src/main/scala/io/gruggiero/accordant4s/` unless noted):
 | # | Spec | Report basis | Estimate |
 |---|------|--------------|----------|
 | 1 | oracle-core | "Core Spec + Outcome ADT, 2–3 days" + SystemChecker 1 day | 3–4 days (incl. build restructure) |
-| 2 | input-sets | "ScalaCheck Gen input sets, 1 day" | 1 day |
+| 2 | input-sets | "Hedgehog Gen input sets, 1 day" | 1 day |
 | 3 | state-graph | part of "BFS + sequential generation, 3–5 days" | 2–3 days |
 | 4 | test-generation | remainder of the above + circe persistence | 2 days |
 | 5 | test-execution | "munit/weaver integration, 1–2 days" + executor | 2 days |

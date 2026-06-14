@@ -14,7 +14,7 @@ and a munit integration module that turns generated cases into test suite entrie
 | `OperationCall[S]` | sealed trait | `spec` (introduced by spec:input-sets) |
 | `TestCase[S]` | case class | `domain` (introduced by spec:test-generation) |
 | `TestCasePersistence` | object | `persist` (introduced by spec:test-generation) |
-| `genTestCase` | ScalaCheck generator | test fixtures (introduced by spec:test-generation) |
+| `genTestCase` | Hedgehog generator | test fixtures (introduced by spec:test-generation) |
 | `BankState` fixture | test case class | test fixtures (introduced by spec:oracle-core) |
 
 ## Concepts Introduced (new)
@@ -111,25 +111,35 @@ Each generated `TestCase` SHALL appear as exactly one named munit test, and a `D
 **Invariant**: A SUT that implements exactly the spec's transitions passes every generated test case, for all explored graphs and algorithms.
 
 ```
-forAll(genSpecInputsDepthAlgo) { (spec, inputs, depth, algo) =>
-  val cases = generate(explore(spec, inputs, init, depth, seed), algo)
-  cases.traverse(tc => TestCaseExecutor.run(spec, tc, RefSut(spec), noHooks))
-       .map(_.forall(_.isPassed))
+property("reference implementation conformance") {
+  for {
+    (spec, inputs, depth, algo) <- genSpecInputsDepthAlgo.forAll
+  } yield {
+    val cases = generate(explore(spec, inputs, init, depth, seed), algo)
+    val passed = cases.traverse(tc => TestCaseExecutor.run(spec, tc, RefSut(spec), noHooks))
+                      .map(_.forall(_.isPassed))
+                      .unsafeRunSync()
+    Result.assert(passed)
+  }
 }
 ```
 
 ### Property: Fault detection (completeness for injected faults)
 
-**Generator strategy**: `genFault` — `Gen.oneOf` over single-operation behavioural mutations (drop-check, wrong-transition, swallow-error) applied to `RefSut`; `classify` by fault kind
+**Generator strategy** (Hedgehog): `genFault` — `Gen.choice1` over single-operation behavioural mutations (drop-check, wrong-transition, swallow-error) applied to `RefSut`; classify by fault kind
 
 **Invariant**: For any single-operation fault injected into `RefSut`, executing a `TransitionCoverage` case set reports at least one `DeviatesAt`, and the reported step's call is the faulted operation.
 
 ```
-forAll(genFault) { fault =>
-  val reports = runAll(spec, transitionCases, RefSut(spec).withFault(fault))
-  reports.exists {
-    case DeviatesAt(_, _, path) => path.steps.last.op.name == fault.opName
-    case _                      => false
+property("fault detection") {
+  for {
+    fault <- genFault.forAll
+  } yield {
+    val reports = runAll(spec, transitionCases, RefSut(spec).withFault(fault))
+    Result.assert(reports.exists {
+      case DeviatesAt(_, _, path) => path.steps.last.op.name == fault.opName
+      case _                      => false
+    })
   }
 }
 ```
@@ -141,24 +151,31 @@ forAll(genFault) { fault =>
 **Invariant**: All steps before the reported index validate as `Conformant` when replayed through the oracle with the recorded responses.
 
 ```
-forAll(genFault) { fault =>
-  runAll(...).forall {
+property("deviation index is the first deviation") {
+  for {
+    fault <- genFault.forAll
+  } yield Result.assert(runAll(...).forall {
     case DeviatesAt(n, _, path) => replayOracle(spec, path.steps.take(n)).isConformant
     case Passed(_)              => true
-  }
+  })
 }
 ```
 
 ### Property: Hook invariant
 
-**Generator strategy**: `genTestCase` (spec 4) × `genSutBehaviour` = `Gen.oneOf(passing, deviating, raising)` — every terminal mode constructed explicitly, counters in `Ref[IO, Int]`
+**Generator strategy** (Hedgehog): `genTestCase` (spec 4) × `genSutBehaviour` = `Gen.choice1(passing, deviating, raising)` — every terminal mode constructed explicitly, counters in `Ref[IO, Int]`
 
 **Invariant**: For every execution — passing, deviating, or erroring — `#beforeEach == #afterEach == 1` per test case.
 
 ```
-forAll(genTestCase, genSutBehaviour) { (tc, behaviour) =>
-  countersAfter(TestCaseExecutor.run(spec, tc, behaviour.sut, countingHooks))
-    .map((b, a) => b == 1 && a == 1)
+property("hook invariant") {
+  for {
+    tc        <- genTestCase.forAll
+    behaviour <- genSutBehaviour.forAll
+  } yield {
+    val (b, a) = countersAfter(TestCaseExecutor.run(spec, tc, behaviour.sut, countingHooks)).unsafeRunSync()
+    Result.assert(b == 1 && a == 1)
+  }
 }
 ```
 

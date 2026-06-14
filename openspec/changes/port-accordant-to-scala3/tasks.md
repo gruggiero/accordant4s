@@ -7,15 +7,15 @@ R3 (property tests) and R8 (adversarial review) are mandatory for every spec.
 
 ## 1. oracle-core (pure oracle kernel + build restructure)
 
-- [ ] Multi-module sbt restructure (core/munit/http4s/smithy4s) + add library dependencies (Iron + iron-cats + iron-scalacheck, circe core/generic/parser, http4s client + http4s-circe, smithy4s-core)
-- [ ] Add sbt plugins to `project/plugins.sbt`: `sbt-stryker4s` (Ring 5), `smithy4s-sbt-codegen` (spec 7 IDL → Scala), `sbt-wartremover` (Ring 1)
-- [ ] Add config files: `.scalafix.conf` (DisableSyntax, RemoveUnused, OrganizeImports), `.scalafmt.conf`, WartRemover warts, `stryker4s.conf`
-- [ ] Note: Stainless (Ring 6) is best-effort/not installed — attempt on `engine.verified` kernels, record downgrade if it cannot run
-- [ ] Step 1 — typed contract: `OperationName`, `CallLabel`, `SpecViolation`, `Outcome`, `StateProfile`, `Verdict`, `StateOps`, `Operation`, `Spec`, `expect` DSL (compiles, human gate)
-- [ ] Step 2 — test oracle: scenarios + 4 properties + compile-negative stubs (compiles, human gate)
-- [ ] Step 3 — implementation: `engine.verified.{OutcomeEval,ProfileEval}` + oracle
-- [ ] Rings: R0 R1 R2 R3 R5 (90–95%) R6 (best-effort) R8
-- [ ] Concept-delta check + update `concept-inventory.md` + checkpoint
+- [x] Multi-module sbt restructure (core/munit/http4s/smithy4s) + add library dependencies (Iron + iron-cats 3.0.2, circe core/generic/parser 0.14.13, http4s client + http4s-circe 0.23.30, smithy4s-core 0.18.33, hedgehog-core Compile + hedgehog-munit 0.13.1 Test — replaces ScalaCheck/munit-scalacheck/iron-scalacheck); verified via `sbt <module>/Test/compile`
+- [x] Add sbt plugins to `project/plugins.sbt`: `sbt-stryker4s` 0.15.1 (Ring 5), `smithy4s-sbt-codegen` 0.18.33 (spec 7 IDL → Scala). `sbt-wartremover` NOT added — no `wartremover_3.8.4` build exists on Maven Central (see capability-profile.md); Ring 1 covered by Scalafix DisableSyntax instead
+- [x] Add config files: `.scalafix.conf` (DisableSyntax, RemoveUnused, OrganizeImports), `.scalafmt.conf`, `stryker4s.conf` (threshold 80%, baseline mutate list); WartRemover warts deferred (see above)
+- [x] Ring 6 (Stainless): dedicated `verified` module (Scala 3.7.2, relaxed flags); PureScala mirror `verified/OracleKernel.scala` verified — 9/9 VCs valid (conformance + termination). Mechanically tied to the shipped kernel by a bridge property (`OracleModelBridgeTests`, `core dependsOn verified % Test`). `stainlessEnabled` off by default; verify with `sbt -J-Xmx6g ring6`
+- [x] Step 1 — typed contract: `OperationName`, `CallLabel`, `SpecViolation`, `Outcome`, `StateProfile`, `Verdict`, `StateOps`, `Operation`, `Spec`, `expect` DSL (compiled, human-approved)
+- [x] Step 2 — test oracle: 10 scenarios + 4 properties + 3 compile-negative checks (Hedgehog `HedgehogSuite`, human-approved)
+- [x] Step 3 — implementation: kernel placed in `domain.{OutcomeEval,ProfileEval}` (Option A, human-approved) + `spec.Spec.allows` delegating to it
+- [x] Rings: R0 ✓ R1 ✓ R2 ✓ R3 ✓ (20/20: 10 scenarios + 4 properties + 3 CN + 2 kernel-coverage + 1 model bridge) · R5 ✓ (Stryker 0.21.0, 100% on pure kernel) · R6 ✓ (Stainless 9/9 VCs on the `verified` module + mechanical bridge) · R8 ⚠️ PARTIAL (NoBranchMatched reserved — see checkpoint)
+- [x] Concept-delta check + update `concept-inventory.md` + checkpoint
 
 ## 2. input-sets (labeled OperationCalls + InputSet composition)
 

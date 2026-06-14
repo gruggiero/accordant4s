@@ -94,28 +94,34 @@ Lives in the `accordant4s-smithy4s` module.
 
 ### Property: Slot set equals endpoint set
 
-**Generator strategy**: `genServiceFixture` — `Gen.oneOf` over a fixed pool of COMPILED test services (TestBank, empty service, non-HTTP service): smithy4s services cannot be synthesized at runtime, so the pool is the constructive domain; `classify` by endpoint count
+**Generator strategy** (Hedgehog): `genServiceFixture` — `Gen.element1` over a fixed pool of COMPILED test services (TestBank, empty service, non-HTTP service): smithy4s services cannot be synthesized at runtime, so the pool is the constructive domain; classify by endpoint count
 
 **Invariant**: For the TestBank service (and any service fixture), derived slot names are exactly the service's endpoint names — no extras, no omissions, no duplicates.
 
 ```
-forAll(genServiceFixture) { svc =>
-  SmithyOps.forService(svc).map(_.name).toSet == svc.endpoints.map(_.name).toSet &&
-  SmithyOps.forService(svc).size == svc.endpoints.size
+property("slot set equals endpoint set") {
+  for {
+    svc <- genServiceFixture.forAll
+  } yield Result.assert(
+    SmithyOps.forService(svc).map(_.name).toSet == svc.endpoints.map(_.name).toSet &&
+    SmithyOps.forService(svc).size == svc.endpoints.size
+  )
 }
 ```
 
 ### Property: Build completeness
 
-**Generator strategy**: `genBehaviourSubset` — `Gen.someOf` over TestBank's endpoint behaviours (constructive subsets including empty and full)
+**Generator strategy** (Hedgehog): `genBehaviourSubset` — `Gen.subsequence(testBank.endpointBehaviours)` over TestBank's endpoint behaviours (constructive subsets including empty and full)
 
 **Invariant**: `build` succeeds iff the assigned-behaviour set covers all endpoints; the `Left` lists exactly the uncovered names.
 
 ```
-forAll(genBehaviourSubset) { assigned =>
-  SpecBuilder(testBank).assignAll(assigned).build match
-    case Right(spec) => assigned.names == testBank.endpointNames
-    case Left(missing) => missing.toList.toSet == (testBank.endpointNames -- assigned.names)
+property("build completeness") {
+  for {
+    assigned <- genBehaviourSubset.forAll
+  } yield SpecBuilder(testBank).assignAll(assigned).build match
+    case Right(spec)   => Result.assert(assigned.names == testBank.endpointNames)
+    case Left(missing) => Result.assert(missing.toList.toSet == (testBank.endpointNames -- assigned.names))
 }
 ```
 
@@ -126,8 +132,12 @@ forAll(genBehaviourSubset) { assigned =>
 **Invariant**: For all generated test cases, execution through the Smithy-derived HTTP binding over a conformant smithy4s stub equals execution through `RefSut`.
 
 ```
-forAll(genTestCase) { tc =>
-  (run(spec, tc, smithyHttpSut), run(spec, tc, RefSut(spec))).mapN(_ == _)
+property("derived binding transparency") {
+  for {
+    tc <- genTestCase.forAll
+  } yield Result.assert(
+    (run(spec, tc, smithyHttpSut), run(spec, tc, RefSut(spec))).mapN(_ == _).unsafeRunSync()
+  )
 }
 ```
 

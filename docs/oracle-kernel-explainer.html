@@ -1,0 +1,961 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OracleKernel Explained</title>
+  <style>
+    :root {
+      --ink: #16243a;
+      --ink-soft: #43536c;
+      --paper: #fbf7ef;
+      --panel: rgba(255, 255, 255, 0.78);
+      --panel-strong: #fffdf8;
+      --line: rgba(22, 36, 58, 0.14);
+      --accent: #d46f4d;
+      --accent-deep: #a34727;
+      --sea: #85b7b0;
+      --gold: #efc76a;
+      --ok: #25695d;
+      --warn: #8d5d18;
+      --shadow: 0 16px 40px rgba(22, 36, 58, 0.12);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Segoe UI", "Trebuchet MS", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(239, 199, 106, 0.34), transparent 34%),
+        radial-gradient(circle at top right, rgba(133, 183, 176, 0.28), transparent 30%),
+        linear-gradient(180deg, #f7efe2 0%, #fbf7ef 38%, #f2f6f5 100%);
+      line-height: 1.55;
+    }
+
+    h1, h2, h3, h4 {
+      font-family: Georgia, "Palatino Linotype", serif;
+      line-height: 1.12;
+      margin: 0 0 0.55rem;
+    }
+
+    p, li { color: var(--ink-soft); }
+    a { color: var(--accent-deep); }
+
+    .shell {
+      width: min(1180px, calc(100vw - 2rem));
+      margin: 0 auto;
+      padding: 1.2rem 0 3rem;
+    }
+
+    .hero, .panel {
+      background: var(--panel);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      overflow: hidden;
+      padding: 1.2rem;
+      display: grid;
+      grid-template-columns: 1.45fr 0.95fr;
+      gap: 1rem;
+    }
+
+    .hero-copy {
+      padding: 1rem;
+      background:
+        linear-gradient(135deg, rgba(255,255,255,0.68), rgba(255,255,255,0.22)),
+        repeating-linear-gradient(-45deg, rgba(22,36,58,0.028), rgba(22,36,58,0.028) 10px, transparent 10px, transparent 20px);
+      border-radius: calc(var(--radius) - 6px);
+    }
+
+    .eyebrow, .mini {
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      font-size: 0.76rem;
+      color: var(--accent-deep);
+      font-weight: 700;
+    }
+
+    .lede {
+      font-size: 1.07rem;
+      max-width: 62ch;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.75rem;
+      align-content: start;
+    }
+
+    .intro-grid {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .stat, .note, .card, .flow-step, .sim-block, .mapping-table, .code {
+      background: var(--panel-strong);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+    }
+
+    .stat { padding: 0.9rem; }
+    .stat strong { display: block; font-size: 1.45rem; color: var(--ink); }
+    .tabs {
+      display: flex;
+      gap: 0.65rem;
+      flex-wrap: wrap;
+      margin: 1rem 0;
+    }
+
+    .tab {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.75);
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 0.72rem 1rem;
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .tab-panels > section { display: none; }
+    .tab-panels > section.active { display: block; }
+
+    .panel { padding: 1.1rem; margin-top: 1rem; }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 0.9rem;
+      margin-top: 1rem;
+    }
+
+    .card { padding: 1rem; }
+    .pill {
+      display: inline-block;
+      padding: 0.25rem 0.55rem;
+      border-radius: 999px;
+      background: rgba(133, 183, 176, 0.18);
+      color: var(--ok);
+      font-size: 0.78rem;
+      font-weight: 700;
+      margin-right: 0.35rem;
+      margin-bottom: 0.4rem;
+    }
+
+    details {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255,255,255,0.68);
+      padding: 0.85rem 1rem;
+      margin-top: 0.8rem;
+    }
+
+    summary {
+      cursor: pointer;
+      font-weight: 700;
+      color: var(--ink);
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 0.8rem;
+      margin-top: 1rem;
+    }
+
+    .flow-step { padding: 0.95rem; position: relative; }
+    .flow-step::after {
+      content: "->";
+      position: absolute;
+      right: -0.62rem;
+      top: 1rem;
+      color: var(--accent);
+      font-weight: 800;
+    }
+    .flow-step:last-child::after { content: ""; }
+
+    .mapping-table {
+      margin-top: 1rem;
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.96rem;
+    }
+
+    th, td {
+      padding: 0.85rem;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th { background: rgba(22,36,58,0.05); color: var(--ink); }
+
+    .code {
+      padding: 1rem;
+      overflow: auto;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.92rem;
+      color: #203046;
+      white-space: pre;
+      margin-top: 1rem;
+    }
+
+    .note {
+      padding: 0.95rem 1rem;
+      margin-top: 0.9rem;
+      border-left: 5px solid var(--gold);
+    }
+
+    .source-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 0.9rem;
+      margin-top: 1rem;
+    }
+
+    .source-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      margin-top: 0.7rem;
+      color: var(--accent-deep);
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .stack {
+      display: grid;
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+
+    .stack .card { min-height: 100%; }
+
+    .sim-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.95fr;
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .sim-block { padding: 1rem; }
+    .branch-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 0.75rem;
+      align-items: center;
+      padding: 0.65rem 0;
+      border-bottom: 1px dashed var(--line);
+    }
+    .branch-row:last-child { border-bottom: 0; }
+
+    .controls {
+      display: grid;
+      gap: 0.8rem;
+    }
+
+    .control-line {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.8rem;
+      align-items: center;
+      padding: 0.7rem 0;
+      border-bottom: 1px dashed var(--line);
+    }
+
+    .control-line:last-child { border-bottom: 0; }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.55rem;
+      margin-top: 0.2rem;
+    }
+
+    .preset-btn {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.92);
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 0.55rem 0.85rem;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .preset-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent-deep);
+    }
+
+    input[type="number"] {
+      width: 6rem;
+      padding: 0.5rem;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      font: inherit;
+      color: var(--ink);
+      background: #fff;
+    }
+
+    .slim-input { width: 4.4rem !important; }
+
+    .result-grid {
+      display: grid;
+      gap: 0.75rem;
+      margin-top: 0.9rem;
+    }
+
+    .subtle {
+      font-size: 0.93rem;
+      color: var(--ink-soft);
+    }
+
+    .sim-title {
+      margin-top: 1.1rem;
+      padding-top: 0.9rem;
+      border-top: 1px solid var(--line);
+    }
+
+    .result {
+      display: grid;
+      gap: 0.65rem;
+      margin-top: 0.85rem;
+    }
+
+    .result-line {
+      padding: 0.75rem 0.85rem;
+      border-radius: 12px;
+      background: rgba(22,36,58,0.05);
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+
+    @media (max-width: 860px) {
+      .hero, .sim-grid, .intro-grid { grid-template-columns: 1fr; }
+      .flow-step::after { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="hero">
+      <div class="hero-copy">
+        <div class="eyebrow">Oracle explainer</div>
+        <h1>OracleKernel as a verified miniature of the real oracle</h1>
+        <p class="lede">
+          This page saves two explanations together: a conceptual deep dive into
+          <code>OracleKernel.scala</code>, and a second pass that maps every idea back to
+          the production flow in <code>Spec.allows</code>, <code>ProfileEval</code>, and
+          <code>OutcomeEval</code>.
+        </p>
+        <div>
+          <span class="pill">Goal: explain the file</span>
+          <span class="pill">Kernel preamble</span>
+          <span class="pill">Method proofs</span>
+          <span class="pill">Core mapping</span>
+          <span class="pill">Bridge tests</span>
+          <span class="pill">Interactive simulators</span>
+        </div>
+      </div>
+      <div class="hero-grid">
+        <div class="stat"><div class="mini">What it is</div><strong>Ring 6 mirror</strong><p>A verifier-friendly model of the survivor/verdict algorithm.</p></div>
+        <div class="stat"><div class="mini">What it proves</div><strong>Existence logic</strong><p>Survivors exist exactly when some branch passed.</p></div>
+        <div class="stat"><div class="mini">Why it is tiny</div><strong>Stainless limits</strong><p>The real code uses richer Scala features that are hard to verify directly.</p></div>
+        <div class="stat"><div class="mini">What backs it up</div><strong>Ring 3 + 5 + 6 bridge</strong><p>Property tests, direct kernel tests, and a production-to-model bridge all reinforce the same algorithm.</p></div>
+      </div>
+    </header>
+
+    <section class="panel">
+      <div class="mini">Kernel preamble</div>
+      <h2>What a kernel is in this project, and why this one matters</h2>
+      <div class="intro-grid">
+        <div>
+          <p>
+            In this codebase, a <strong>kernel</strong> is the smallest pure computation that carries
+            the correctness burden of a feature. It is the algorithmic core that turns inputs into a
+            decision before adapters, type wrappers, mocks, or integration details get involved. For
+            the oracle, the kernel is the logic that answers a single question: given a response and a
+            set of candidate states, which next states still survive?
+          </p>
+          <p>
+            That kernel works in three conceptual moves. First, inspect every candidate-state branch
+            combination and keep only the branches whose checks accept the observed response. Second,
+            compute the next state each passing branch implies. Third, deduplicate those next states
+            and decide the verdict from emptiness: non-empty means there is still at least one
+            consistent world, so the response is conformant; empty means every branch was ruled out,
+            so the response is deviant.
+          </p>
+          <p>
+            <code>verified/OracleKernel.scala</code> isolates exactly that core. It is not a second
+            product implementation; it is a deliberately tiny mirror of the shipped algorithm, reduced
+            to a form Stainless can reason about. The production code keeps the richer domain model,
+            while the verified mirror keeps only the proof-carrying shape.
+          </p>
+        </div>
+        <div class="stack">
+          <article class="card">
+            <h3>Production kernel</h3>
+            <p><code>Spec.allows</code> delegates to <code>ProfileEval.allows</code>, which uses <code>OutcomeEval.flatten</code>, branch checks, transitions, and <code>StateProfile</code>.</p>
+          </article>
+          <article class="card">
+            <h3>Verified kernel</h3>
+            <p><code>EvalBranch(passed, next)</code> strips that logic down to the observable effect of each branch against a fixed response.</p>
+          </article>
+          <article class="card">
+            <h3>Why not verify production directly?</h3>
+            <p>Because Cats validation, Iron, opaque types, and function-heavy state transitions are much harder for Stainless to model than a tiny PureScala mirror.</p>
+          </article>
+          <article class="card">
+            <h3>How assurance is layered now</h3>
+            <p>Ring 3 checks the oracle spec, Ring 5 hardens direct public kernel behavior, and the new Ring 6 bridge cross-checks production and verified survivor logic on the same generated inputs.</p>
+          </article>
+        </div>
+      </div>
+      <div class="note">
+        <strong>Rule of thumb:</strong> the oracle kernel is the part that turns “many possible states”
+        into “these are the survivors”. Everything else either feeds that computation or packages its result.
+      </div>
+    </section>
+
+    <nav class="tabs" aria-label="Sections">
+      <button class="tab active" data-tab="conceptual">Conceptual deep dive</button>
+      <button class="tab" data-tab="mapping">Production mapping</button>
+      <button class="tab" data-tab="proofs">Method proofs</button>
+      <button class="tab" data-tab="simulator">Try the algorithm</button>
+    </nav>
+
+    <div class="tab-panels">
+      <section id="conceptual" class="active panel">
+        <div class="mini">Saved explanation 1</div>
+        <h2>What the file is trying to do</h2>
+        <p>
+          <code>OracleKernel.scala</code> is not the shipped oracle implementation. It is a
+          deliberately reduced model whose only job is to make the core control-flow of the
+          oracle simple enough for Stainless to prove. In the real code, the oracle receives
+          a request, a response, and a non-empty profile of candidate states. It then asks:
+          which branches of the specification accept this response, what next states do they
+          produce, and after deduplicating those states, is anything left?
+        </p>
+        <p>
+          The verified file compresses all of that down to the observable essence of a branch:
+          did it pass, and if it did, which next-state identity survives? That reduction is
+          why the model can use <code>EvalBranch(passed, next)</code> over <code>BigInt</code>
+          instead of the full <code>Outcome</code> tree, response checks, transitions, opaque
+          state profiles, and Cats-based validation used in <code>core</code>.
+        </p>
+
+        <div class="cards">
+          <article class="card">
+            <h3>Primary goal</h3>
+            <p>Prove the oracle's conformance boundary: survivors are non-empty exactly when at least one branch passed.</p>
+          </article>
+          <article class="card">
+            <h3>Why that matters</h3>
+            <p>The entire verdict split depends on this boundary. Non-empty survivors mean conformant; empty survivors mean deviant.</p>
+          </article>
+          <article class="card">
+            <h3>What is left to tests</h3>
+            <p>Full survivor provenance and richer dedup semantics stay in Ring 3 property tests because those proofs are heavier and less solver-friendly.</p>
+          </article>
+          <article class="card">
+            <h3>What changed in the codebase</h3>
+            <p>New tests now check both the production kernel directly and the mechanical bridge from production evaluation to the Stainless model, so the explanation is no longer just conceptual.</p>
+          </article>
+        </div>
+
+        <details open>
+          <summary><code>passingNexts</code>: extract the next states from passing branches</summary>
+          <p>
+            This is the verified stand-in for the production pattern
+            <code>filter(_.matches).map(_.next)</code>. It walks the list of evaluated branches
+            and keeps <code>b.next</code> only when <code>b.passed</code> is true. Semantically,
+            it says that failing branches contribute nothing and each passing branch contributes
+            one candidate survivor. The file comments note that the strongest soundness theorem,
+            "every produced state comes from some passing branch", is intentionally not encoded
+            here because the required quantifier instantiation makes Z3 diverge.
+          </p>
+        </details>
+
+        <details>
+          <summary><code>distinct</code>: deduplicate while preserving first occurrence</summary>
+          <p>
+            This function keeps the head, removes later copies of it, and recurses. The
+            <code>decreases(xs.size)</code> annotation is there for termination: Stainless must
+            see a strictly shrinking measure. Conceptually, the function models the real oracle's
+            collapse of duplicate next-states, where multiple passing branches may represent the
+            same surviving world. The file deliberately avoids proving the full set-theoretic
+            correctness of dedup here; Ring 3 already checks that the profile-level dedup is
+            idempotent and order-insensitive in the real implementation.
+          </p>
+        </details>
+
+        <details>
+          <summary><code>survivors</code>: the whole survivor-set algorithm in one line</summary>
+          <p>
+            <code>survivors(bs) = distinct(passingNexts(bs))</code>. That is the entire abstract
+            kernel: first discard failed branches, then collapse duplicate states. Nothing else is
+            needed for the central existential proof. The production code does the same thing on a
+            richer input: a cross-product of candidate states and flattened branches rather than a
+            single list of pre-evaluated booleans.
+          </p>
+        </details>
+
+        <details>
+          <summary><code>distinctEmptyIff</code>: dedup does not change emptiness</summary>
+          <p>
+            This is the first explicit theorem in the file. It proves that deduplication cannot
+            create or destroy existence. If a list has at least one element, its deduplicated form
+            also has at least one element; if the list is empty, dedup stays empty. That sounds
+            small, but it is the exact bridge needed to justify that the oracle may decide its
+            verdict based on whether the deduplicated survivor list is empty.
+          </p>
+        </details>
+
+        <details>
+          <summary><code>conformantIffSomeBranchPassed</code>: the main verified statement</summary>
+          <p>
+            This theorem instantiates the previous lemma at the oracle level: the survivor list is
+            empty exactly when the list of next-states coming from passing branches is empty. In
+            plain language, some state survives if and only if some branch passed. This is the
+            formally checked core of the verdict logic, and it lines up with the Ring 3 property
+            test that the real implementation is conformant exactly when some branch matches some
+            candidate state.
+          </p>
+        </details>
+
+        <div class="note">
+          <strong>Bottom line:</strong> the file is proving the algebra of existence, not the full
+          business semantics of response checking, violation accumulation, registration, or typed
+          operation dispatch.
+        </div>
+        <div class="note">
+          <strong>Updated assurance story:</strong> the verified theorem is now backed by three layers in
+          <code>core</code>: the original oracle properties, direct unit tests for the public kernel
+          functions, and a bridge property asserting that the real <code>ProfileEval</code> agrees with
+          the Stainless model on conformance and deduplicated survivor count.
+        </div>
+      </section>
+
+      <section id="mapping" class="panel">
+        <div class="mini">Saved explanation 2</div>
+        <h2>How the verified mirror maps back to the production oracle</h2>
+        <p>
+          The easiest way to read the file is to follow the real production path first. A caller
+          invokes <code>Spec.allows(op, req, res, profile)</code>. If the operation name is not
+          registered, the answer is immediately <code>Verdict.Deviant(UnknownOperation)</code>. If
+          it is registered, the method delegates to <code>ProfileEval.allows</code>. That function
+          evaluates each candidate state in the profile, flattens the operation's
+          <code>Outcome</code> tree into atomic branches, keeps only the branches whose checks
+          accept the actual response, computes the next states for those passing branches, dedups
+          them, and finally chooses between <code>Conformant</code> and <code>Deviant</code>.
+        </p>
+
+        <div class="flow">
+          <div class="flow-step"><h3>1. Registration gate</h3><p><code>Spec.allows</code> refuses unknown operations before evaluation starts.</p></div>
+          <div class="flow-step"><h3>2. Flatten outcomes</h3><p><code>OutcomeEval.flatten</code> turns <code>Same</code>, <code>Next</code>, and nested <code>OneOf</code> into a plain branch list.</p></div>
+          <div class="flow-step"><h3>3. Keep passing branches</h3><p><code>matches</code> checks whether the actual response satisfies the branch predicate.</p></div>
+          <div class="flow-step"><h3>4. Compute next states</h3><p><code>next</code> applies the branch transition for every surviving candidate.</p></div>
+          <div class="flow-step"><h3>5. Dedup and verdict</h3><p>Non-empty survivors yield <code>Conformant</code>; empty survivors yield <code>Deviant</code>.</p></div>
+        </div>
+
+        <div class="mapping-table">
+          <table>
+            <thead>
+              <tr><th>Verified mirror</th><th>Production concept</th><th>Meaning of the reduction</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>EvalBranch(passed, next)</code></td><td><code>OutcomeEval.Branch(check, transition)</code> plus a fixed response and state</td><td>Replace "run the check and transition" with "record the observed result".</td></tr>
+              <tr><td><code>passingNexts</code></td><td><code>branches.filter(_.matches(...)).map(_.next(...))</code></td><td>Discard the mechanism, keep only the effect.</td></tr>
+              <tr><td><code>distinct</code></td><td><code>dedupByEq</code> and <code>StateProfile.of</code></td><td>Model duplicate-state collapse without richer <code>Eq</code> machinery.</td></tr>
+              <tr><td><code>survivors</code></td><td>The survivor list inside <code>ProfileEval.allows</code></td><td>Abstract the whole conformant path into one definition.</td></tr>
+              <tr><td><code>conformantIffSomeBranchPassed</code></td><td>The boundary between <code>Verdict.Conformant</code> and <code>Verdict.Deviant</code></td><td>Capture the load-bearing existential theorem.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="code">Spec.allows(op, req, res, profile)
+  if op.name is not registered:
+    Deviant(UnknownOperation)
+  else
+    ProfileEval.allows(name, s => op.behaviour(req, s), res, profile)
+
+ProfileEval.allows(...)
+  evaluated  = profile.toList.map(candidate => (candidate, flatten(behaviour(candidate))))
+  survivors  = dedupByEq(
+                 evaluated.flatMap((candidate, branches) =>
+                   branches.filter(_.matches(res, candidate)).map(_.next(res, candidate))
+                 )
+               )
+  if survivors.nonEmpty then Conformant(StateProfile.of(...))
+  else Deviant(all failed atomic checks)
+
+OracleKernel
+  passingNexts = keep next only for already-passing branches
+  survivors    = distinct(passingNexts)
+  theorem      = survivors.nonEmpty iff some branch passed</div>
+
+        <p>
+          The key compression step is this: the verified module does not try to re-prove that
+          flattening is correct, that checks accumulate all violations, or that typed operations
+          prevent request and response mismatches. Those guarantees live elsewhere: in the
+          production code, in compile-negative tests, and in the Ring 3 property suite. The new
+          bridge property now adds a direct executable cross-check: it feeds the same generated
+          profiles and responses into real <code>ProfileEval.allows</code> and into the reduced
+          <code>OracleKernel.survivors</code> abstraction, then asserts agreement on conformance and
+          survivor count. The
+          verified module instead isolates the exact piece that is both mathematically central and
+          solver-friendly: survivor existence is equivalent to branch success.
+        </p>
+        <div class="cards">
+          <article class="card">
+            <h3>Ring 5 hardening</h3>
+            <p><code>OracleKernelTests</code> directly checks <code>OutcomeEval.survivors</code> filtering/dedup behavior and the order-insensitive semantics of <code>eqStateProfile</code>.</p>
+          </article>
+          <article class="card">
+            <h3>Ring 6 bridge</h3>
+            <p><code>OracleModelBridgeTests</code> reduces real branch evaluation to <code>EvalBranch</code> values and checks that model survivors agree with the production verdict and survivor cardinality.</p>
+          </article>
+          <article class="card">
+            <h3>Build wiring</h3>
+            <p>The <code>core</code> project now depends on <code>verified</code> for tests only, while Stainless stays off by default and is turned on explicitly by the <code>ring6</code> command alias.</p>
+          </article>
+        </div>
+
+        <h3 class="sim-title">Direct source excerpts</h3>
+        <p class="subtle">
+          These are the key snippets the page talks about most. The links open the source files directly
+          from this repo when the page is browsed locally.
+        </p>
+        <div class="source-grid">
+          <article class="card">
+            <h3>Verified mirror</h3>
+            <div class="code">final case class EvalBranch(passed: Boolean, next: BigInt)
+
+def passingNexts(bs: List[EvalBranch]): List[BigInt] =
+  bs match {
+    case Nil()      => Nil[BigInt]()
+    case Cons(b, t) => if (b.passed) b.next :: passingNexts(t) else passingNexts(t)
+  }
+
+def survivors(bs: List[EvalBranch]): List[BigInt] =
+  distinct(passingNexts(bs))
+
+def conformantIffSomeBranchPassed(bs: List[EvalBranch]): Boolean = {
+  survivors(bs).isEmpty == passingNexts(bs).isEmpty
+}.holds</div>
+            <a class="source-link" href="../verified/src/main/scala/io/gruggiero/accordant4s/verified/OracleKernel.scala">Open `verified/.../OracleKernel.scala`</a>
+          </article>
+          <article class="card">
+            <h3>Production verdict split</h3>
+            <div class="code">def allows[Res, S](..., res: Res, profile: StateProfile[S]): Verdict[S] =
+  val evaluated = profile.toList.map(c => (c, OutcomeEval.flatten(behaviour(c))))
+  val survivors = OutcomeEval.dedupByEq(
+    evaluated.flatMap((c, branches) => branches.filter(_.matches(res, c)).map(_.next(res, c)))
+  )
+  survivors match
+    case head :: tail => Verdict.Conformant(StateProfile.of(NonEmptyList(head, tail)))
+    case Nil          => Verdict.Deviant(...)</div>
+            <a class="source-link" href="../core/src/main/scala/io/gruggiero/accordant4s/domain/Evaluation.scala">Open `core/.../Evaluation.scala`</a>
+          </article>
+          <article class="card">
+            <h3>Bridge test</h3>
+            <div class="code">val real = ProfileEval.allows(name, behaviour, res, profile)
+
+val flat =
+  profile.toList.flatMap(c =>
+    OutcomeEval.flatten(behaviour(c)).map(b => (b.matches(res, c), b.next(res, c)))
+  )
+
+val modelSurv =
+  OracleKernel.survivors(toSList(flat.map((passed, nx) => EvalBranch(passed, enc(nx)))))
+
+real match
+  case Verdict.Conformant(p) => !modelSurv.isEmpty && modelSurv.size.toInt == p.toList.size
+  case Verdict.Deviant(_)    => modelSurv.isEmpty</div>
+            <a class="source-link" href="../core/src/test/scala/io/gruggiero/accordant4s/oraclecore/OracleModelBridgeTests.scala">Open `core/.../OracleModelBridgeTests.scala`</a>
+          </article>
+        </div>
+      </section>
+
+      <section id="proofs" class="panel">
+        <div class="mini">Method by method</div>
+        <h2>What each method proves, and what it intentionally does not prove</h2>
+        <div class="cards">
+          <article class="card">
+            <h3><code>passingNexts</code></h3>
+            <p><strong>Proves by construction:</strong> failing branches add nothing; passing branches contribute their next state.</p>
+            <p><strong>Not proved here:</strong> a quantified provenance theorem for every output element.</p>
+          </article>
+          <article class="card">
+            <h3><code>distinct</code></h3>
+            <p><strong>Proves by verification:</strong> the recursion terminates.</p>
+            <p><strong>Supports later proof:</strong> dedup preserves emptiness.</p>
+          </article>
+          <article class="card">
+            <h3><code>survivors</code></h3>
+            <p><strong>Meaning:</strong> the abstract survivor-set definition for the verified world.</p>
+            <p><strong>Purpose:</strong> make the final theorem read like the oracle itself.</p>
+          </article>
+          <article class="card">
+            <h3><code>distinctEmptyIff</code></h3>
+            <p><strong>Formal theorem:</strong> dedup cannot turn non-empty into empty or empty into non-empty.</p>
+          </article>
+          <article class="card">
+            <h3><code>conformantIffSomeBranchPassed</code></h3>
+            <p><strong>Formal theorem:</strong> survivor existence exactly matches branch success existence.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="simulator" class="panel">
+        <div class="mini">Interactive</div>
+        <h2>Experiment with the reduced algorithm and the full bridge flow</h2>
+        <p>
+          Toggle whether each branch passed and edit its next-state identity. The simulator applies
+          the same steps as <code>OracleKernel</code>: compute <code>passingNexts</code>, dedup to
+          get <code>survivors</code>, then derive the conformant/deviant boundary.
+        </p>
+
+        <div class="sim-grid">
+          <div class="sim-block">
+            <div class="branch-row"><label><input class="passed" type="checkbox" checked> Branch A passed</label><input class="next" type="number" value="10"><span>next = 10</span></div>
+            <div class="branch-row"><label><input class="passed" type="checkbox"> Branch B passed</label><input class="next" type="number" value="20"><span>next = 20</span></div>
+            <div class="branch-row"><label><input class="passed" type="checkbox" checked> Branch C passed</label><input class="next" type="number" value="10"><span>next = 10</span></div>
+            <div class="note">Notice how duplicate survivors collapse, but the existence of a survivor does not.</div>
+          </div>
+          <div class="sim-block">
+            <div class="result">
+              <div class="result-line" id="passingNextsOut"></div>
+              <div class="result-line" id="survivorsOut"></div>
+              <div class="result-line" id="verdictOut"></div>
+              <div class="result-line" id="theoremOut"></div>
+            </div>
+          </div>
+        </div>
+
+        <h3 class="sim-title">Bridge simulator: <code>Spec.allows</code> -> <code>ProfileEval</code> -> Stainless model</h3>
+        <p class="subtle">
+          This second simulator mirrors the shape of <code>OracleModelBridgeTests</code>. It uses the same
+          three interesting cases from the test behavior: positive response collapses all candidates to one
+          state, negative response keeps the original candidates, and zero matches nothing. It also includes
+          the registration gate from <code>Spec.allows</code>.
+        </p>
+
+        <div class="sim-grid">
+          <div class="sim-block">
+            <div class="controls">
+              <div class="button-row">
+                <button class="preset-btn" type="button" data-preset="positive">Positive collapse</button>
+                <button class="preset-btn" type="button" data-preset="negative">Negative same-state</button>
+                <button class="preset-btn" type="button" data-preset="zero">Zero no-match</button>
+                <button class="preset-btn" type="button" data-preset="unknown">Unknown operation</button>
+              </div>
+              <div class="control-line">
+                <label><input id="registeredInput" type="checkbox" checked> operation registered</label>
+                <label>response <input id="responseInput" class="slim-input" type="number" value="1"></label>
+                <span class="subtle">positive = collapse, negative = same-state, zero = no branch passes</span>
+              </div>
+              <div class="control-line">
+                <label><input class="candidate-enabled" type="checkbox" checked> candidate A</label>
+                <label>state id <input class="candidate-id slim-input" type="number" value="1"></label>
+              </div>
+              <div class="control-line">
+                <label><input class="candidate-enabled" type="checkbox" checked> candidate B</label>
+                <label>state id <input class="candidate-id slim-input" type="number" value="2"></label>
+              </div>
+              <div class="control-line">
+                <label><input class="candidate-enabled" type="checkbox"> candidate C</label>
+                <label>state id <input class="candidate-id slim-input" type="number" value="2"></label>
+              </div>
+            </div>
+            <div class="note">
+              Duplicate candidate ids simulate <code>StateProfile.of</code> dedup. The collapsed positive
+              branch always transitions to the synthetic state id <code>999</code>.
+            </div>
+          </div>
+          <div class="sim-block">
+            <div class="result-grid">
+              <div class="result-line" id="profileOut"></div>
+              <div class="result-line" id="flattenOut"></div>
+              <div class="result-line" id="realOut"></div>
+              <div class="result-line" id="modelOut"></div>
+              <div class="result-line" id="bridgeOut"></div>
+              <div class="result-line" id="testOut"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const tabs = document.querySelectorAll(".tab");
+    const panels = document.querySelectorAll(".tab-panels > section");
+
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        tabs.forEach((t) => t.classList.remove("active"));
+        panels.forEach((p) => p.classList.remove("active"));
+        tab.classList.add("active");
+        document.getElementById(tab.dataset.tab).classList.add("active");
+      });
+    });
+
+    const passedInputs = [...document.querySelectorAll(".passed")];
+    const nextInputs = [...document.querySelectorAll(".next")];
+    const passingNextsOut = document.getElementById("passingNextsOut");
+    const survivorsOut = document.getElementById("survivorsOut");
+    const verdictOut = document.getElementById("verdictOut");
+    const theoremOut = document.getElementById("theoremOut");
+    const registeredInput = document.getElementById("registeredInput");
+    const responseInput = document.getElementById("responseInput");
+    const candidateEnabled = [...document.querySelectorAll(".candidate-enabled")];
+    const candidateIds = [...document.querySelectorAll(".candidate-id")];
+    const presetButtons = [...document.querySelectorAll(".preset-btn")];
+    const profileOut = document.getElementById("profileOut");
+    const flattenOut = document.getElementById("flattenOut");
+    const realOut = document.getElementById("realOut");
+    const modelOut = document.getElementById("modelOut");
+    const bridgeOut = document.getElementById("bridgeOut");
+    const testOut = document.getElementById("testOut");
+
+    function distinct(xs) {
+      const out = [];
+      xs.forEach((x) => {
+        if (!out.includes(x)) out.push(x);
+      });
+      return out;
+    }
+
+    function renderSimulator() {
+      const branches = passedInputs.map((box, i) => ({
+        passed: box.checked,
+        next: Number(nextInputs[i].value || 0)
+      }));
+
+      const passingNexts = branches.filter((b) => b.passed).map((b) => b.next);
+      const survivors = distinct(passingNexts);
+      const verdict = survivors.length > 0 ? "Conformant" : "Deviant";
+      const theorem = (survivors.length === 0) === (passingNexts.length === 0);
+
+      passingNextsOut.textContent = "passingNexts(bs) = [" + passingNexts.join(", ") + "]";
+      survivorsOut.textContent = "survivors(bs) = distinct(passingNexts(bs)) = [" + survivors.join(", ") + "]";
+      verdictOut.innerHTML = "Verdict boundary: <span class=\"" + (verdict === "Conformant" ? "ok" : "warn") + "\">" + verdict + "</span>";
+      theoremOut.innerHTML = "Theorem check: survivors.isEmpty == passingNexts.isEmpty is <span class=\"ok\">" + theorem + "</span>";
+    }
+
+    function dedup(xs) {
+      const out = [];
+      xs.forEach((x) => {
+        if (!out.includes(x)) out.push(x);
+      });
+      return out;
+    }
+
+    function renderBridgeSimulator() {
+      const registered = registeredInput.checked;
+      const response = Number(responseInput.value || 0);
+      const rawCandidates = candidateEnabled
+        .map((box, i) => box.checked ? Number(candidateIds[i].value || 0) : null)
+        .filter((x) => x !== null);
+      const profile = dedup(rawCandidates);
+
+      profileOut.textContent = "StateProfile.of(...) => profile = [" + profile.join(", ") + "]";
+
+      if (!registered) {
+        flattenOut.textContent = "Spec.allows short-circuit: operation is not registered";
+        realOut.innerHTML = "Real verdict: <span class=\"warn\">Deviant(UnknownOperation)</span>";
+        modelOut.textContent = "Model bridge is skipped because ProfileEval is never reached";
+        bridgeOut.textContent = "Bridge assertion: not applicable before registration succeeds";
+        testOut.textContent = "Test intuition: this is the Spec.allows gate, not the Ring 6 bridge path";
+        return;
+      }
+
+      const branchDescriptions = profile.flatMap((candidate) => {
+        const posPassed = response > 0;
+        const negPassed = response < 0;
+        return [
+          "candidate " + candidate + " -> posNext(999), passed=" + posPassed,
+          "candidate " + candidate + " -> sameNext(" + candidate + "), passed=" + negPassed
+        ];
+      });
+      flattenOut.textContent = "Flattened/evaluated branches: " + (branchDescriptions.length ? branchDescriptions.join(" | ") : "no candidates");
+
+      let realSurvivors = [];
+      if (response > 0) realSurvivors = dedup(profile.map(() => 999));
+      else if (response < 0) realSurvivors = dedup(profile);
+      else realSurvivors = [];
+
+      const realVerdict = realSurvivors.length > 0 ? "Conformant" : "Deviant";
+      realOut.innerHTML = "Real ProfileEval path: survivors = [" + realSurvivors.join(", ") + "], verdict = <span class=\"" + (realVerdict === "Conformant" ? "ok" : "warn") + "\">" + realVerdict + "</span>";
+
+      const allNextStates = [];
+      profile.forEach((candidate) => {
+        allNextStates.push(999);
+        allNextStates.push(candidate);
+      });
+      const distinctNext = dedup(allNextStates);
+      const encodedBranches = profile.flatMap((candidate) => ([
+        { passed: response > 0, next: distinctNext.indexOf(999) },
+        { passed: response < 0, next: distinctNext.indexOf(candidate) }
+      ]));
+      const modelPassingNexts = encodedBranches.filter((b) => b.passed).map((b) => b.next);
+      const modelSurvivors = dedup(modelPassingNexts);
+
+      modelOut.textContent = "Model OracleKernel.survivors on encoded branches = [" + modelSurvivors.join(", ") + "] (encoded over distinct next-states [" + distinctNext.join(", ") + "])";
+
+      const bridgePass = (realVerdict === "Conformant") === (modelSurvivors.length > 0)
+        && modelSurvivors.length === realSurvivors.length;
+      bridgeOut.innerHTML = "Bridge assertion: same conformance and survivor count = <span class=\"" + (bridgePass ? "ok" : "warn") + "\">" + bridgePass + "</span>";
+
+      let intuition = "";
+      if (response > 0) intuition = "Matches the positive branch in OracleModelBridgeTests: every candidate collapses to one shared survivor.";
+      else if (response < 0) intuition = "Matches the negative branch in OracleModelBridgeTests: same-state survivors preserve the deduplicated profile.";
+      else intuition = "Matches the zero-response case in OracleModelBridgeTests: no branch passes, so both real and model paths are deviant/empty.";
+      testOut.textContent = "Test intuition: " + intuition;
+    }
+
+    function applyPreset(name) {
+      const presets = {
+        positive: { registered: true, response: 3, candidates: [1, 2, null] },
+        negative: { registered: true, response: -4, candidates: [1, 2, 2] },
+        zero: { registered: true, response: 0, candidates: [1, 2, null] },
+        unknown: { registered: false, response: 5, candidates: [1, 2, null] }
+      };
+      const preset = presets[name];
+      if (!preset) return;
+
+      registeredInput.checked = preset.registered;
+      responseInput.value = preset.response;
+      candidateEnabled.forEach((box, i) => {
+        const value = preset.candidates[i];
+        box.checked = value !== null;
+        candidateIds[i].value = value === null ? (i + 1) : value;
+      });
+      renderBridgeSimulator();
+    }
+
+    [...passedInputs, ...nextInputs].forEach((el) => el.addEventListener("input", renderSimulator));
+    [registeredInput, responseInput, ...candidateEnabled, ...candidateIds].forEach((el) => el.addEventListener("input", renderBridgeSimulator));
+    presetButtons.forEach((btn) => btn.addEventListener("click", () => applyPreset(btn.dataset.preset)));
+    renderSimulator();
+    renderBridgeSimulator();
+  </script>
+</body>
+</html>

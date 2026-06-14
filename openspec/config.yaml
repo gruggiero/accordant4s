@@ -22,24 +22,41 @@ context: |
   Microsoft Accordant to the Typelevel stack). It is a LIBRARY, not a
   service: it exposes no API operations of its own.
 
-  DETECTED STACK (verified against build.sbt / project/* on 2026-06-12):
+  DETECTED STACK (verified against build.sbt / project/* on 2026-06-13):
   - Scala 3.8.4, sbt 1.12.11, JDK 26 (Homebrew OpenJDK)
-  - Single sbt module `accordant4s` (multi-module split core/munit/http4s/
-    smithy4s is planned by the active change, spec 1)
+  - Multi-module: `core` (accordant4s-core), `munit` (accordant4s-munit),
+    `http4s` (accordant4s-http4s), `smithy4s` (accordant4s-smithy4s), each
+    `dependsOn(core)`, aggregated by `root` (publish skipped)
   - scalacOptions: -Werror, -Wunused:all, -Wvalue-discard, -deprecation,
     -feature, -language:strictEquality, -language:adhocExtensions
-  - Effect system: cats-effect 3.5.7; streaming: fs2-core 3.11.0
+  - Effect system: cats-effect 3.5.7; streaming: fs2-core 3.11.0 (core)
+  - Refined types: Iron + iron-cats 3.0.2 (Compile, core) — deviates from this
+    change's design.md "2.6.x" (latest available on Maven Central; new project,
+    no migration cost). No iron-scalacheck/iron-hedgehog: refined-type
+    generators are written by hand (raw value → smart constructor)
+  - JSON/persistence: circe-core/generic/parser 0.14.13 (Compile, core)
+  - HTTP: http4s-client/http4s-circe 0.23.30 (Compile, http4s module)
+  - IDL: smithy4s-core 0.18.33 (Compile, smithy4s module) + sbt plugin
+    smithy4s-sbt-codegen 0.18.33 (not yet enabled via enablePlugins —
+    deferred to spec 7's TestBank.smithy fixture)
   - Test framework: munit 1.0.0 + munit-cats-effect 2.0.0 (NOT ScalaTest)
-  - Property testing: scalacheck 1.18.1 + munit-scalacheck 1.0.0
-  - sbt plugins: sbt-scalafix 0.14.0 (semanticdb enabled), sbt-scalafmt 2.5.4
-  - NOT YET CONFIGURED (plugins/config absent — Ring availability impact):
-    no .scalafix.conf, no .scalafmt.conf, no WartRemover, no Stryker4s
-    (Ring 5), no Stainless (Ring 6), no TLA+/Apalache (Ring 7), no otel4s/
-    Daut (Ring 9). The active change's spec 1 adds Scalafix/WartRemover/
-    Stryker4s configuration; until then the affected rings are skipped
-    with a stated correctness impact.
-  - No actor framework, no HTTP/persistence/messaging libraries yet
-    (http4s, circe, Iron, smithy4s are added BY the active change)
+  - Property testing: Hedgehog (hedgehog-core Compile in core, hedgehog-munit
+    0.13.1 Test) — integrated shrinking, NO Arbitrary typeclass, explicit
+    `Range` sizing. Properties extend `hedgehog.munit.HedgehogSuite` (runs via
+    munit's framework). NOT ScalaCheck/munit-scalacheck. `hedgehog.Gen` is a
+    Compile dependency of core because `Operation.mock` exposes it publicly
+  - sbt plugins: sbt-scalafix 0.14.0 (semanticdb enabled), sbt-scalafmt
+    2.5.4, sbt-stryker4s 0.15.1, smithy4s-sbt-codegen 0.18.33
+  - CONFIGURED (Ring 1): .scalafix.conf (DisableSyntax, RemoveUnused,
+    OrganizeImports), .scalafmt.conf (scala3 dialect) — both verified via
+    scalafixAll --check / scalafmtCheckAll+scalafmtSbtCheck
+  - NOT AVAILABLE: WartRemover — no wartremover_3.8.4 build exists on Maven
+    Central; omitted from project/plugins.sbt, Scalafix DisableSyntax covers
+    the syntactic warts instead (see capability-profile.md)
+  - READY, UNTESTED: stryker4s.conf present (Ring 5, threshold 80%,
+    baseline mutate list — retarget per spec); Stainless (Ring 6) not
+    installed, best-effort per spec; no TLA+/Apalache (Ring 7); no otel4s/
+    Daut (Ring 9)
 
   CODING CONVENTIONS (correctness-first):
   - Invalid states should be unrepresentable: prefer narrow enums/ADTs and
@@ -84,9 +101,9 @@ rules:
   specs:
     - Open every requirement with a normative SHALL/MUST statement before its Given clause (required by `openspec validate --strict`)
     - Use Given/When/Then format for ALL requirements; every Then must be observable
-    - Every spec MUST have at least 2 ScalaCheck properties in the Properties section
+    - Every spec MUST have at least 2 Hedgehog properties in the Properties section
     - Properties must be INVARIANTS (forAll), not examples (specific values)
-    - Every property must declare its generator strategy (constructive preferred over suchThat)
+    - Every property must declare its generator strategy (constructive preferred over .ensure-filtering; no Arbitrary typeclass — generators are always explicit)
     - Include model-based properties where relevant (event-sourcing replay, messaging ingestion, DSL semantics, serialization round-trips)
     - Concepts Used table must reference exact entries from concept-inventory.md
     - Concepts Introduced table is a COMMITMENT — implementation must honor it

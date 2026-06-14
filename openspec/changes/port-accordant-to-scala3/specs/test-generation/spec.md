@@ -13,7 +13,7 @@ persistence (Accordant's test-case file records) for reproducing failures.
 | `OperationCall[S]` / `InputSet[S]` | sealed trait / case class | `spec` (introduced by spec:input-sets) |
 | `MaxDepth` | opaque type | `domain` (introduced by spec:state-graph) |
 | `CallLabel` / `OperationName` | opaque types | `domain` (introduced by spec:oracle-core) |
-| `genStateGraph` | ScalaCheck generator | test fixtures (introduced by spec:state-graph) |
+| `genStateGraph` | Hedgehog generator | test fixtures (introduced by spec:state-graph) |
 | `BankState` fixture | test case class | test fixtures (introduced by spec:oracle-core) |
 
 ## Concepts Introduced (new)
@@ -26,7 +26,7 @@ persistence (Accordant's test-case file records) for reproducing failures.
 | `TestCaseFileRecord` | case class | Versioned persistence envelope (schema version, spec name, test case) |
 | `TestCasePersistence` | object (`persist`) | circe encode/decode of `TestCaseFileRecord` given user codecs for `S`/requests |
 | `PersistenceError` | enum | `DecodeFailed(io.circe.Error)` \| `VersionMismatch(found, expected)` |
-| `genTestCase` | ScalaCheck generator | Test cases from generated graphs, for downstream specs |
+| `genTestCase` | Hedgehog generator | Test cases from generated graphs, for downstream specs |
 
 ## ADDED Requirements
 
@@ -103,52 +103,71 @@ A persisted `TestCase[S]` SHALL round-trip to an equal value; an unknown schema 
 
 ### Property: Path validity for all algorithms
 
-**Generator strategy**: `genStateGraph` (spec:state-graph fixture — graphs of 3–12 nodes built constructively from generated specs) × `genAlgorithm` (`Gen.oneOf` of StateCoverage, TransitionCoverage, seeded `RandomWalk`)
+**Generator strategy** (Hedgehog): `genStateGraph` (spec:state-graph fixture — graphs of 3–12 nodes built constructively from generated specs) × `genAlgorithm` (`Gen.choice1` of StateCoverage, TransitionCoverage, seeded `RandomWalk`)
 
 **Invariant**: For every generated graph and every algorithm, every test case is an edge-connected path from the initial state.
 
 ```
-forAll(genStateGraph, genAlgorithm) { (graph, algo) =>
-  TestCaseGenerator.generate(graph, algo).forall(tc =>
-    tc.initial === graph.initial && isEdgePath(graph, tc.initial, tc.steps))
+property("path validity for all algorithms") {
+  for {
+    graph <- genStateGraph.forAll
+    algo  <- genAlgorithm.forAll
+  } yield Result.assert(
+    TestCaseGenerator.generate(graph, algo).forall(tc =>
+      tc.initial === graph.initial && isEdgePath(graph, tc.initial, tc.steps))
+  )
 }
 ```
 
 ### Property: StateCoverage covers all nodes / TransitionCoverage covers all edges
 
-**Generator strategy**: `genStateGraph` with `classify` on node/edge counts; self-loop-bearing graphs guaranteed by including a `Same`-outcome operation in the generating spec pool
+**Generator strategy** (Hedgehog): `genStateGraph` with classification on node/edge counts; self-loop-bearing graphs guaranteed by including a `Same`-outcome operation in the generating spec pool
 
 **Invariant**: The union of states (resp. edges) visited by the generated cases equals the graph's node (resp. edge) set.
 
 ```
-forAll(genStateGraph) { graph =>
-  statesVisited(graph, generate(graph, StateCoverage)).toSet === graph.nodes.map(_.state).toSet &&
-  edgesVisited(graph, generate(graph, TransitionCoverage)).toSet === graph.edges.toSet
+property("StateCoverage covers all nodes / TransitionCoverage covers all edges") {
+  for {
+    graph <- genStateGraph.forAll
+  } yield Result.assert(
+    statesVisited(graph, generate(graph, StateCoverage)).toSet === graph.nodes.map(_.state).toSet &&
+    edgesVisited(graph, generate(graph, TransitionCoverage)).toSet === graph.edges.toSet
+  )
 }
 ```
 
 ### Property: Persistence roundtrip
 
-**Generator strategy**: `genTestCase` derived from `genStateGraph` + path selection; request payloads cover unicode and empty-string edges via `Gen.frequency`
+**Generator strategy** (Hedgehog): `genTestCase` derived from `genStateGraph` + path selection; request payloads cover unicode and empty-string edges via `Gen.frequency1`
 
 **Invariant**: `decode(encode(tc)) == Right(tc)` for all generated test cases.
 
 ```
-forAll(genTestCase) { tc =>
-  TestCasePersistence.fromJson[BankState](TestCasePersistence.toJson(tc)) == Right(tc)
+property("persistence roundtrip") {
+  for {
+    tc <- genTestCase.forAll
+  } yield Result.assert(
+    TestCasePersistence.fromJson[BankState](TestCasePersistence.toJson(tc)) == Right(tc)
+  )
 }
 ```
 
 ### Property: RandomWalk is a pure function of (graph, seed, count)
 
-**Generator strategy**: `genStateGraph` × `arbitrary[Long]` × `Gen.chooseNum(1, 10)` for count (constructive)
+**Generator strategy** (Hedgehog): `genStateGraph` × `Gen.long(Range.linearFrom(0, Long.MinValue, Long.MaxValue))` × `Gen.int(Range.linear(1, 10))` for count (refined to `Positive` via the smart constructor)
 
 **Invariant**: Equal inputs produce equal outputs; `count` is honored exactly.
 
 ```
-forAll(genStateGraph, arbitrary[Long], genPosSmall) { (graph, seed, count) =>
-  val a = generate(graph, RandomWalk(seed, count))
-  a == generate(graph, RandomWalk(seed, count)) && a.size == count.value
+property("RandomWalk is a pure function of (graph, seed, count)") {
+  for {
+    graph <- genStateGraph.forAll
+    seed  <- genSeed.forAll
+    count <- genPosSmall.forAll
+  } yield {
+    val a = generate(graph, RandomWalk(seed, count))
+    Result.assert(a == generate(graph, RandomWalk(seed, count)) && a.size == count.value)
+  }
 }
 ```
 

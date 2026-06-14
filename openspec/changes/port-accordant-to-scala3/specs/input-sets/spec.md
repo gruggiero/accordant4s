@@ -1,7 +1,7 @@
 # Spec: Input Sets
 
 Port of Accordant's `InputSet` / `op.With(request, label)` / `Accordant.Choose` to
-labeled `OperationCall`s with ScalaCheck `Gen` as the enumeration engine (report §3.1:
+labeled `OperationCall`s with Hedgehog `Gen` as the enumeration engine (report §3.1:
 `Choose.Each<T>()` → `Gen`).
 
 ## Concepts Used (from inventory)
@@ -20,8 +20,8 @@ labeled `OperationCall`s with ScalaCheck `Gen` as the enumeration engine (report
 | `OperationCall[S]` | sealed trait (existential `Req`/`Res` members) | One labeled step: `(op, req, label)` with types hidden |
 | `InputSet[S]` | case class | Ordered, label-unique collection of `OperationCall[S]` |
 | `withInput` extension | extension method | `op.withInput(req, label): OperationCall[S]` (Accordant's `op.With`) |
-| `InputSet.fromGen` | constructor | Sample `n` calls from a `Gen[Req]` with auto-derived labels (Choose replacement) |
-| `genOperationCall` / `genInputSet` | ScalaCheck generators | Test generators for downstream specs |
+| `InputSet.fromGen` | constructor | Sample `n` calls from a `hedgehog.Gen[Req]` (explicit `Seed` + `Size`) with auto-derived labels (Choose replacement) |
+| `genOperationCall` / `genInputSet` | Hedgehog generators | Test generators for downstream specs |
 
 ## ADDED Requirements
 
@@ -79,13 +79,13 @@ Combining two input sets (`++`) SHALL preserve order and MUST reject duplicate l
 
 #### Scenario: Happy path — deterministic sampling
 
-**Given** `Gen.choose(1, 100).map(DepositRequest("alice", _))`, `n = 10`, `seed = 42`
+**Given** `Gen.int(Range.linear(1, 100)).map(DepositRequest("alice", _))`, `n = 10`, `seed = 42`
 **When** `fromGen` runs twice
 **Then** both runs yield identical input sets
 
 #### Scenario: Edge case — generator collapse
 
-**Given** `Gen.const(DepositRequest("alice", 50))` and `n = 10`
+**Given** `Gen.constant(DepositRequest("alice", 50))` and `n = 10`
 **When** `fromGen` runs
 **Then** the input set contains exactly 1 call (duplicates collapsed, no label collision possible)
 
@@ -93,43 +93,57 @@ Combining two input sets (`++`) SHALL preserve order and MUST reject duplicate l
 
 ### Property: withInput roundtrip
 
-**Generator strategy**: constructive `genDepositRequest` (`Gen.posNum` amounts × `Gen.oneOf` account pool) and `genCallLabel` from `Gen.identifier` refined through `CallLabel.either` (constructive, no filtering)
+**Generator strategy** (Hedgehog): constructive `genDepositRequest` (`Gen.int(Range.linear(1, 1000000))` amounts × `Gen.element1` account pool) and `genCallLabel` = `Gen.string(Gen.alphaNum, Range.linear(1, 16))` refined through `CallLabel.either` (constructive — the non-blank range guarantees success, no filtering)
 
 **Invariant**: For all operations, requests, and labels, the constructed call returns exactly what was put in.
 
 ```
-forAll { (req: DepositRequest, label: CallLabel) =>
-  val call = deposit.withInput(req, label)
-  call.op.name == deposit.name && call.req == req && call.label == label
+property("withInput roundtrip") {
+  for {
+    req   <- genDepositRequest.forAll
+    label <- genCallLabel.forAll
+  } yield {
+    val call = deposit.withInput(req, label)
+    Result.assert(call.op.name == deposit.name && call.req == req && call.label == label)
+  }
 }
 ```
 
 ### Property: Composition is associative and label-preserving
 
-**Generator strategy**: `genInputSet` builds label-disjoint sets by namespacing labels with a per-set prefix — disjointness by construction, not `suchThat`; `classify` on set sizes
+**Generator strategy** (Hedgehog): `genInputSet` builds label-disjoint sets by namespacing labels with a per-set prefix — disjointness by construction, not `.ensure`-filtering; classify on set sizes
 
 **Invariant**: For label-disjoint sets, `(a ++ b) ++ c == a ++ (b ++ c)` and the labels of the union equal the concatenation of the labels.
 
 ```
-forAll { (a: InputSet[BankState], b: InputSet[BankState], c: InputSet[BankState]) =>
-  disjoint(a, b, c) ==> {
+property("composition is associative and label-preserving") {
+  for {
+    a <- genInputSet("a").forAll
+    b <- genInputSet("b").forAll
+    c <- genInputSet("c").forAll
+  } yield Result.assert(
     ((a ++ b).flatMap(_ ++ c)) == (b ++ c).flatMap(a ++ _) &&
     (a ++ b).map(_.labels) == Right(a.labels ::: b.labels)
-  }
+  )
 }
 ```
 
 ### Property: fromGen determinism and bound
 
-**Generator strategy**: `arbitrary[Long]` seeds × `Gen.chooseNum(1, 20)` for n × inner `Gen.choose(1, 100)` request payloads; the duplicate-collapse edge is covered by a `Gen.const` sub-case via `Gen.frequency`
+**Generator strategy** (Hedgehog): `Gen.long(Range.linearFrom(0, Long.MinValue, Long.MaxValue))` seeds × `Gen.int(Range.linear(1, 20))` for n (refined to `PosInt` via the smart constructor) × inner `Gen.int(Range.linear(1, 100))` request payloads; the duplicate-collapse edge is covered by a `Gen.constant` sub-case via `Gen.frequency1`
 
 **Invariant**: Same `(gen, n, seed)` always yields the same input set, with size ≤ n and unique labels.
 
 ```
-forAll { (seed: Long, n: PosInt) =>
-  val s1 = InputSet.fromGen(deposit, genReq, n, seed)
-  val s2 = InputSet.fromGen(deposit, genReq, n, seed)
-  s1 == s2 && s1.size <= n.value && s1.labels.distinct == s1.labels
+property("fromGen determinism and bound") {
+  for {
+    seed <- genSeed.forAll
+    n    <- genPosInt.forAll
+  } yield {
+    val s1 = InputSet.fromGen(deposit, genReq, n, seed)
+    val s2 = InputSet.fromGen(deposit, genReq, n, seed)
+    Result.assert(s1 == s2 && s1.size <= n.value && s1.labels.distinct == s1.labels)
+  }
 }
 ```
 

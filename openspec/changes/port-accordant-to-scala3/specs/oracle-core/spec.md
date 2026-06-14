@@ -22,7 +22,7 @@ the types introduced here.
 | `StateProfile[S]` | opaque type | Non-empty `Eq`-deduplicated candidate-state set |
 | `Verdict[S]` | enum | `Conformant(StateProfile[S])` \| `Deviant(NonEmptyList[SpecViolation])` |
 | `StateOps[S]` | given bundle | `Eq[S]`, `Hash[S]`, `Show[S]`, `CanEqual[S, S]` requirements on user state |
-| `Operation[Req, Res, S]` | case class | `name`, `behaviour: (Req, S) => Outcome[Res, S]`, `mock: (Req, S) => Gen[Res]` |
+| `Operation[Req, Res, S]` | case class | `name`, `behaviour: (Req, S) => Outcome[Res, S]`, `mock: (Req, S) => Gen[Res]` (`hedgehog.Gen`) |
 | `Spec[S]` | case class | Operation registry + `allows` oracle + `register` builder |
 | `expect` DSL | object | `expect(check).sameState` / `.thenState(f)` / `expect.oneOf(...)` constructors |
 | `OutcomeEval` | pure object (`engine.verified`) | Evaluate one outcome tree against one `(res, state)` |
@@ -113,7 +113,7 @@ For an `OneOf` outcome, the oracle SHALL produce the `Eq`-deduplicated union of 
 
 **Given** the two-state profile and a `GetAccount("alice")` response of `found(balance = 999)`
 **When** `allows` evaluates
-**Then** the verdict is `Deviant` and includes `NoBranchMatched`/`ProfileExhausted` details for both candidate worlds
+**Then** the verdict is `Deviant`, accumulating the failed `CheckFailed` atoms from every branch that rejected the response across both candidate worlds (`NoBranchMatched`/`ProfileExhausted` remain reserved for richer per-candidate reports and the totality fallback respectively)
 
 ### Requirement: StateProfile invariants
 
@@ -133,57 +133,73 @@ A `StateProfile` MUST never be empty and MUST never contain two `Eq`-equal state
 
 ### Property: Conformant ⇔ some branch matches some candidate
 
-**Generator strategy**: constructive `genBankState` (bounded `Map` of account-id/balance pairs), `genStateProfile` = deduplicated `NonEmptyList` of 1–4 states (`Gen.chooseNum`, covering the single-state edge), `genWithdrawRequest` over known and unknown account ids, `genWithdrawResponse` via `Gen.frequency` across ALL variants (success/notFound/badRequest/timeout). No `suchThat`; `classify` on match/no-match
+**Generator strategy** (Hedgehog): constructive `genBankState` (a `Map` from `Gen.string(Gen.alpha, Range.linear(1, 8))` keys and `BigDecimal` balances over `Range.linear`), `genStateProfile` = deduplicated `NonEmptyList` of 1–4 states (size via `Range.linear(1, 4)`, covering the single-state edge), `genWithdrawRequest` over known and unknown account ids, `genWithdrawResponse` via `Gen.frequency1` across ALL variants (success/notFound/badRequest/timeout). No `.ensure`-filtering; classify on match/no-match (integrated shrinking)
 
 **Invariant**: `allows` returns `Conformant` iff at least one (candidate state × outcome branch) pair has a passing check; the surviving profile equals the deduplicated set of corresponding next-states.
 
 ```
-forAll { (profile: StateProfile[BankState], req: WithdrawRequest, res: WithdrawResponse) =>
-  val expected = profile.toList
-    .flatMap(s => matchingBranches(withdraw.behaviour(req, s), res, s).map(_.nextState(res, s)))
-    .distinctByEq
-  spec.allows(withdraw, req, res, profile) match
-    case Conformant(p) => expected.nonEmpty && p.toList.sameElementsByEq(expected)
-    case Deviant(_)    => expected.isEmpty
+property("Conformant iff some branch matches some candidate") {
+  for {
+    profile <- genStateProfile.forAll
+    req     <- genWithdrawRequest.forAll
+    res     <- genWithdrawResponse.forAll
+  } yield {
+    val expected = profile.toList
+      .flatMap(s => matchingBranches(withdraw.behaviour(req, s), res, s).map(_.nextState(res, s)))
+      .distinctByEq
+    spec.allows(withdraw, req, res, profile) match
+      case Conformant(p) => Result.assert(expected.nonEmpty && p.toList.sameElementsByEq(expected))
+      case Deviant(_)    => Result.assert(expected.isEmpty)
+  }
 }
 ```
 
 ### Property: Same preserves the profile
 
-**Generator strategy**: `genStateProfile` as above + constructive `genGetAccountRequest`; the response is drawn from the operation's own `mock` generator so the check passes by construction
+**Generator strategy** (Hedgehog): `genStateProfile` as above + constructive `genGetAccountRequest`; the response is drawn from the operation's own `mock` generator so the check passes by construction
 
 **Invariant**: For operations whose outcome is `Same` with an always-passing check, the output profile is `Eq`-equal to the input profile, for all profiles and requests.
 
 ```
-forAll { (profile: StateProfile[BankState], req: GetAccountRequest) =>
-  spec.allows(noopGet, req, anyRes, profile) == Conformant(profile)
+property("Same preserves the profile") {
+  for {
+    profile <- genStateProfile.forAll
+    req     <- genGetAccountRequest.forAll
+  } yield assertEquals(spec.allows(noopGet, req, anyRes, profile), Conformant(profile))
 }
 ```
 
 ### Property: Deviant accumulates every failed check
 
-**Generator strategy**: `genWithdrawResponse` biased via `Gen.frequency` toward check-failing variants; `classify` reports the deviant/conformant split so the failure path is visibly exercised
+**Generator strategy** (Hedgehog): `genWithdrawResponse` biased via `Gen.frequency1` toward check-failing variants; classify reports the deviant/conformant split so the failure path is visibly exercised
 
 **Invariant**: When no branch matches, the violation list size equals the total number of failed atomic checks across all branches and candidates — never 1 unless there was exactly one check.
 
 ```
-forAll { (profile: StateProfile[BankState], res: WithdrawResponse) =>
-  spec.allows(multiCheckOp, req, res, profile) match
-    case Deviant(vs)   => vs.length == countFailedChecks(multiCheckOp, res, profile)
-    case Conformant(_) => true
+property("Deviant accumulates every failed check") {
+  for {
+    profile <- genStateProfile.forAll
+    res     <- genWithdrawResponse.forAll
+  } yield spec.allows(multiCheckOp, req, res, profile) match
+    case Deviant(vs)   => assertEquals(vs.length, countFailedChecks(multiCheckOp, res, profile))
+    case Conformant(_) => Result.success
 }
 ```
 
 ### Property: Profile dedup is idempotent and order-insensitive
 
-**Generator strategy**: `Gen.nonEmptyListOf` over a deliberately small pool (`Gen.oneOf` of 3 fixed `BankState`s) to force duplicate collisions constructively
+**Generator strategy** (Hedgehog): `Gen.element1` of 3 fixed `BankState`s, collected via `.list(Range.linear(1, 12))` and wrapped as a `NonEmptyList`, so duplicate collisions are forced constructively
 
 **Invariant**: `StateProfile.of(xs) == StateProfile.of(xs.reverse)` and constructing from a list with duplicates equals constructing from its distinct elements.
 
 ```
-forAll { (states: NonEmptyList[BankState]) =>
-  StateProfile.of(states) === StateProfile.of(states.reverse) &&
-  StateProfile.of(states ::: states) === StateProfile.of(states)
+property("Profile dedup is idempotent and order-insensitive") {
+  for {
+    states <- genNelBankState.forAll
+  } yield Result.assert(
+    StateProfile.of(states) === StateProfile.of(states.reverse) &&
+    StateProfile.of(states ::: states) === StateProfile.of(states)
+  )
 }
 ```
 
@@ -236,4 +252,4 @@ def verdict(survivors: List[S], violations: List[SpecViolation]): Verdict = {
 
 ## Verification Rings
 
-Ring 0 ✅ · Ring 1 ✅ · Ring 2 ✅ · Ring 3 ✅ · Ring 4 — (no wire/persisted data) · Ring 5 ✅ (90–95%, pure kernel) · Ring 6 ✅ (`engine.verified` kernels, best-effort) · Ring 7 — · Ring 8 ✅ · Ring 9 —
+Ring 0 ✅ · Ring 1 ✅ · Ring 2 ✅ · Ring 3 ✅ · Ring 4 — (no wire/persisted data) · Ring 5 ✅ (Stryker 0.21.0, pure kernel) · Ring 6 ✅ (best-effort: PureScala mirror in the `verified` module, Stainless 9/9 VCs) · Ring 7 — · Ring 8 ✅ · Ring 9 —

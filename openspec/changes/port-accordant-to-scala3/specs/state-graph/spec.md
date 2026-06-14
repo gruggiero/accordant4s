@@ -26,7 +26,7 @@ by `MaxDepth`.
 | `Edge[S]` | case class | `(from: S, call: OperationCall[S], to: S)` — `from == to` is a self-loop |
 | `StateGraph[S]` | case class | `initial: S`, `nodes: Vector[Node[S]]`, `edges: Vector[Edge[S]]` |
 | `GraphExplorer` | object | Pure tail-recursive BFS `explore(spec, inputs, initial, depth, seed): StateGraph[S]` + `fs2.Stream` facade |
-| `genStateGraph` | ScalaCheck generator | Graphs from arbitrary small specs, for downstream specs' tests |
+| `genStateGraph` | Hedgehog generator | Graphs from arbitrary small specs, for downstream specs' tests |
 
 ## ADDED Requirements
 
@@ -96,72 +96,96 @@ States that are `Eq`-equal SHALL share a single graph node, with identity determ
 
 ### Property: Every edge is spec-conformant
 
-**Generator strategy**: shared constructive `genSmallSpecAndInputs`: specs assembled from a pool of 2–4 bank-like operations with behaviours drawn from `Same`/`Next`/`OneOf` combinators, input sets of 2–6 labeled calls, `MaxDepth` via `Gen.chooseNum(1, 4)` (constructive refinement), seeds from `arbitrary[Long]`; `classify` by (operation count, depth); mocked responses re-derived from the seed
+**Generator strategy**: shared constructive `genSmallSpecAndInputs`: specs assembled from a pool of 2–4 bank-like operations with behaviours drawn from `Same`/`Next`/`OneOf` combinators, input sets of 2–6 labeled calls, `MaxDepth` via `Gen.int(Range.linear(1, 4))` refined through the smart constructor, seeds from `Gen.long(Range.linearFrom(0, Long.MinValue, Long.MaxValue))`; `classify` by (operation count, depth); mocked responses re-derived from the seed
 
 **Invariant**: For every edge in any explored graph, replaying the call with the mocked response through the oracle from the edge's source yields `Conformant` containing the edge's target.
 
 ```
-forAll(genSmallSpecAndInputs) { (spec, inputs, initial, depth, seed) =>
-  GraphExplorer.explore(spec, inputs, initial, depth, seed).edges.forall { e =>
-    spec.allows(e.call.op, e.call.req, mockedRes(e, seed), StateProfile.one(e.from)) match
-      case Conformant(p) => p.containsEq(e.to)
-      case Deviant(_)    => false
+property("every edge is oracle-conformant") {
+  for {
+    (spec, inputs, initial, depth, seed) <- genSmallSpecAndInputs.forAll
+  } yield Result.assert {
+    GraphExplorer.explore(spec, inputs, initial, depth, seed).edges.forall { e =>
+      spec.allows(e.call.op, e.call.req, mockedRes(e, seed), StateProfile.one(e.from)) match
+        case Conformant(p) => p.containsEq(e.to)
+        case Deviant(_)    => false
+    }
   }
 }
 ```
 
 ### Property: Depth bound and reachability
 
-**Generator strategy**: shared constructive `genSmallSpecAndInputs`: specs assembled from a pool of 2–4 bank-like operations with behaviours drawn from `Same`/`Next`/`OneOf` combinators, input sets of 2–6 labeled calls, `MaxDepth` via `Gen.chooseNum(1, 4)` (constructive refinement), seeds from `arbitrary[Long]`; `classify` by (operation count, depth)
+**Generator strategy**: shared constructive `genSmallSpecAndInputs`: specs assembled from a pool of 2–4 bank-like operations with behaviours drawn from `Same`/`Next`/`OneOf` combinators, input sets of 2–6 labeled calls, `MaxDepth` via `Gen.int(Range.linear(1, 4))` refined through the smart constructor, seeds from `Gen.long(Range.linearFrom(0, Long.MinValue, Long.MaxValue))`; `classify` by (operation count, depth)
 
 **Invariant**: All nodes have depth ≤ MaxDepth; every node is reachable from the initial state via recorded edges; the initial state is always a node at depth 0.
 
 ```
-forAll(genSmallSpecAndInputs) { (spec, inputs, initial, depth, seed) =>
-  val g = GraphExplorer.explore(spec, inputs, initial, depth, seed)
-  g.nodes.forall(_.depth <= depth) &&
-  g.nodes.forall(n => reachable(g.initial, n.state, g.edges)) &&
-  g.nodes.exists(n => n.state === initial && n.depth == 0)
+property("depth bound and reachability") {
+  for {
+    (spec, inputs, initial, depth, seed) <- genSmallSpecAndInputs.forAll
+  } yield {
+    val g = GraphExplorer.explore(spec, inputs, initial, depth, seed)
+    Result.assert(
+      g.nodes.forall(_.depth <= depth) &&
+      g.nodes.forall(n => reachable(g.initial, n.state, g.edges)) &&
+      g.nodes.exists(n => n.state === initial && n.depth == 0)
+    )
+  }
 }
 ```
 
 ### Property: Determinism
 
-**Generator strategy**: shared constructive `genSmallSpecAndInputs`: specs assembled from a pool of 2–4 bank-like operations with behaviours drawn from `Same`/`Next`/`OneOf` combinators, input sets of 2–6 labeled calls, `MaxDepth` via `Gen.chooseNum(1, 4)` (constructive refinement), seeds from `arbitrary[Long]`; `classify` by (operation count, depth); the generated tuple is explored twice
+**Generator strategy**: shared constructive `genSmallSpecAndInputs`: specs assembled from a pool of 2–4 bank-like operations with behaviours drawn from `Same`/`Next`/`OneOf` combinators, input sets of 2–6 labeled calls, `MaxDepth` via `Gen.int(Range.linear(1, 4))` refined through the smart constructor, seeds from `Gen.long(Range.linearFrom(0, Long.MinValue, Long.MaxValue))`; `classify` by (operation count, depth); the generated tuple is explored twice
 
 **Invariant**: Same `(spec, inputs, initial, depth, seed)` produces identical graphs.
 
 ```
-forAll(genSmallSpecAndInputs) { (spec, inputs, initial, depth, seed) =>
-  GraphExplorer.explore(spec, inputs, initial, depth, seed) ==
-    GraphExplorer.explore(spec, inputs, initial, depth, seed)
+property("determinism") {
+  for {
+    (spec, inputs, initial, depth, seed) <- genSmallSpecAndInputs.forAll
+  } yield Result.assert(
+    GraphExplorer.explore(spec, inputs, initial, depth, seed) ==
+      GraphExplorer.explore(spec, inputs, initial, depth, seed)
+  )
 }
 ```
 
 ### Property: No duplicate nodes
 
-**Generator strategy**: shared constructive `genSmallSpecAndInputs`: specs assembled from a pool of 2–4 bank-like operations with behaviours drawn from `Same`/`Next`/`OneOf` combinators, input sets of 2–6 labeled calls, `MaxDepth` via `Gen.chooseNum(1, 4)` (constructive refinement), seeds from `arbitrary[Long]`; `classify` by (operation count, depth), with a small state pool to force diamond revisits
+**Generator strategy**: shared constructive `genSmallSpecAndInputs`: specs assembled from a pool of 2–4 bank-like operations with behaviours drawn from `Same`/`Next`/`OneOf` combinators, input sets of 2–6 labeled calls, `MaxDepth` via `Gen.int(Range.linear(1, 4))` refined through the smart constructor, seeds from `Gen.long(Range.linearFrom(0, Long.MinValue, Long.MaxValue))`; `classify` by (operation count, depth), with a small state pool to force diamond revisits
 
 **Invariant**: No two nodes hold `Eq`-equal states.
 
 ```
-forAll(genSmallSpecAndInputs) { (spec, inputs, initial, depth, seed) =>
-  val states = GraphExplorer.explore(spec, inputs, initial, depth, seed).nodes.map(_.state)
-  states.size == distinctByEq(states).size
+property("no duplicate nodes") {
+  for {
+    (spec, inputs, initial, depth, seed) <- genSmallSpecAndInputs.forAll
+  } yield {
+    val states = GraphExplorer.explore(spec, inputs, initial, depth, seed).nodes.map(_.state)
+    Result.assert(states.size == distinctByEq(states).size)
+  }
 }
 ```
 
 ### Property: Stream/explore agreement
 
-**Generator strategy**: shared constructive `genSmallSpecAndInputs`: specs assembled from a pool of 2–4 bank-like operations with behaviours drawn from `Same`/`Next`/`OneOf` combinators, input sets of 2–6 labeled calls, `MaxDepth` via `Gen.chooseNum(1, 4)` (constructive refinement), seeds from `arbitrary[Long]`; `classify` by (operation count, depth); the stream is compiled to a Vector and compared
+**Generator strategy**: shared constructive `genSmallSpecAndInputs`: specs assembled from a pool of 2–4 bank-like operations with behaviours drawn from `Same`/`Next`/`OneOf` combinators, input sets of 2–6 labeled calls, `MaxDepth` via `Gen.int(Range.linear(1, 4))` refined through the smart constructor, seeds from `Gen.long(Range.linearFrom(0, Long.MinValue, Long.MaxValue))`; `classify` by (operation count, depth); the stream is compiled to a Vector and compared
 
 **Invariant**: The stream facade emits exactly `explore`'s node set, in non-decreasing depth order.
 
 ```
-forAll(genSmallSpecAndInputs) { (spec, inputs, initial, depth, seed) =>
-  val streamed = GraphExplorer.stream(spec, inputs, initial, depth, seed).compile.toVector
-  streamed.map(_.state).toSet === explore(...).nodes.map(_.state).toSet &&
-  streamed.map(_.depth).isSorted
+property("stream/explore agreement") {
+  for {
+    (spec, inputs, initial, depth, seed) <- genSmallSpecAndInputs.forAll
+  } yield {
+    val streamed = GraphExplorer.stream(spec, inputs, initial, depth, seed).compile.toVector
+    Result.assert(
+      streamed.map(_.state).toSet === explore(...).nodes.map(_.state).toSet &&
+      streamed.map(_.depth).isSorted
+    )
+  }
 }
 ```
 

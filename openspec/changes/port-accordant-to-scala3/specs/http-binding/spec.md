@@ -95,25 +95,32 @@ Running the generated suite through `Http4sSut` SHALL yield all-`Passed` reports
 
 ### Property: Request codec roundtrip
 
-**Generator strategy**: constructive `genWithdrawRequest` with `Gen.frequency` over boundary amounts and unicode account ids
+**Generator strategy** (Hedgehog): constructive `genWithdrawRequest` with `Gen.frequency1` over boundary amounts and unicode account ids
 
 **Invariant**: For all requests, decoding the encoded HTTP entity yields the original request.
 
 ```
-forAll { (req: WithdrawRequest) =>
-  decodeEntity[WithdrawRequest](route.encode(req)) == Right(req)
+property("request codec roundtrip") {
+  for {
+    req <- genWithdrawRequest.forAll
+  } yield Result.assert(decodeEntity[WithdrawRequest](route.encode(req)) == Right(req))
 }
 ```
 
 ### Property: Mapper totality over statuses
 
-**Generator strategy**: `genStatus` = `Gen.chooseNum(100, 599)` mapped through `Status.fromInt` (constructive); `genBody` = `Gen.oneOf`(well-formed JSON, empty, malformed bytes) — malformed bodies must map to a decode-error response variant
+**Generator strategy** (Hedgehog): `genStatus` = `Gen.int(Range.linear(100, 599))` mapped through `Status.fromInt` (constructive); `genBody` = `Gen.choice1`(well-formed JSON, empty, malformed bytes) — malformed bodies must map to a decode-error response variant
 
 **Invariant**: For every HTTP status code and well-formed body, the response mapper produces a `Res` value — `execute` never raises for mapped operations.
 
 ```
-forAll(genStatus, genBody) { (status, body) =>
-  Http4sSut(stubClient(status, body), binding).execute(withdrawCall).attempt.map(_.isRight)
+property("mapper totality over statuses") {
+  for {
+    status <- genStatus.forAll
+    body   <- genBody.forAll
+  } yield Result.assert(
+    Http4sSut(stubClient(status, body), binding).execute(withdrawCall).attempt.map(_.isRight).unsafeRunSync()
+  )
 }
 ```
 
@@ -124,9 +131,13 @@ forAll(genStatus, genBody) { (status, body) =>
 **Invariant**: For all generated test cases, executing through `Http4sSut` over an in-process conformant server yields the same `ExecutionReport` as executing through the in-memory `RefSut`.
 
 ```
-forAll(genTestCase) { tc =>
-  (TestCaseExecutor.run(spec, tc, httpSut, noHooks),
-   TestCaseExecutor.run(spec, tc, RefSut(spec), noHooks)).mapN(_ == _)
+property("transparency — HTTP SUT equals direct SUT") {
+  for {
+    tc <- genTestCase.forAll
+  } yield Result.assert(
+    (TestCaseExecutor.run(spec, tc, httpSut, noHooks),
+     TestCaseExecutor.run(spec, tc, RefSut(spec), noHooks)).mapN(_ == _).unsafeRunSync()
+  )
 }
 ```
 

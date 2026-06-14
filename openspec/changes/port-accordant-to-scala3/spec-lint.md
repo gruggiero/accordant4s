@@ -2,7 +2,7 @@
 
 Change: `port-accordant-to-scala3` — linted 2026-06-12 after the v2 (renumbered
 verified-scala3 schema) retrofit of all 8 specs. Stack assumptions checked against
-`capability-profile.md` (munit + munit-scalacheck + cats-effect; no actor/telemetry
+`capability-profile.md` (munit + Hedgehog + cats-effect; no actor/telemetry
 stack).
 
 `✅*` on check 6: the concept inventory is EMPTY (new project, per schema rules).
@@ -34,11 +34,11 @@ is implemented, so resolution is enforced at the right time.
 |---|-------|-----------------|
 | 1 | Given/When/Then concrete | ✅ |
 | 2 | Then observable | ✅ — verdicts, reports, Left values, graph nodes/edges, counters |
-| 3 | Scenarios testable | ✅ — munit + munit-scalacheck + cats-effect IO per capability-profile.md |
+| 3 | Scenarios testable | ✅ — munit + Hedgehog (`HedgehogSuite`) + cats-effect IO per capability-profile.md |
 | 4 | Error paths specified | ✅ |
 | 5 | New concepts declared | ✅ |
 | 6 | Reused concepts resolved | ✅* — inventory is empty (new project); the 1 'used' row is the explicit 'None — new project' marker |
-| 7 | Generator strategies | ✅ — every property carries a **Generator strategy** line (constructive; no suchThat) |
+| 7 | Generator strategies | ✅ — every property carries a **Generator strategy** line (constructive Hedgehog gens; no `.ensure`-filtering; no Arbitrary) |
 | 8 | Temporal trigger/response | ✅ — vacuous: no Temporal Properties section in any spec (Ring 9 unchecked) |
 | 9 | No vague words | ✅ — 'satisfies the declared check' wording; no bare vague words |
 | 10 | Unreachable claims proven | ✅ — 'silent override is unrepresentable' → Either-returning register (runtime, specified); StateProfile emptiness → compile-negative stub |
@@ -53,11 +53,11 @@ is implemented, so resolution is enforced at the right time.
 |---|-------|-----------------|
 | 1 | Given/When/Then concrete | ✅ |
 | 2 | Then observable | ✅ — verdicts, reports, Left values, graph nodes/edges, counters |
-| 3 | Scenarios testable | ✅ — munit + munit-scalacheck + cats-effect IO per capability-profile.md |
+| 3 | Scenarios testable | ✅ — munit + Hedgehog (`HedgehogSuite`) + cats-effect IO per capability-profile.md |
 | 4 | Error paths specified | ✅ |
 | 5 | New concepts declared | ✅ |
 | 6 | Reused concepts resolved | ✅* — references oracle-core concepts (forward refs within this change) |
-| 7 | Generator strategies | ✅ — every property carries a **Generator strategy** line (constructive; no suchThat) |
+| 7 | Generator strategies | ✅ — every property carries a **Generator strategy** line (constructive Hedgehog gens; no `.ensure`-filtering; no Arbitrary) |
 | 8 | Temporal trigger/response | ✅ — vacuous: no Temporal Properties section in any spec (Ring 9 unchecked) |
 | 9 | No vague words | ✅ |
 | 10 | Unreachable claims proven | ✅ — existential leak prevention → CN stub + Ring 8 grep |
@@ -72,11 +72,11 @@ is implemented, so resolution is enforced at the right time.
 |---|-------|-----------------|
 | 1 | Given/When/Then concrete | ✅ |
 | 2 | Then observable | ✅ — verdicts, reports, Left values, graph nodes/edges, counters |
-| 3 | Scenarios testable | ✅ — munit + munit-scalacheck + cats-effect IO per capability-profile.md |
+| 3 | Scenarios testable | ✅ — munit + Hedgehog (`HedgehogSuite`) + cats-effect IO per capability-profile.md |
 | 4 | Error paths specified | ✅ — note: canonicalization & streaming requirements have no failure mode (pure functions); their edge scenarios (diamond collapse, early termination) are recorded as the boundary behaviour |
 | 5 | New concepts declared | ✅ |
 | 6 | Reused concepts resolved | ✅* — forward refs to specs 1–2 |
-| 7 | Generator strategies | ✅ — every property carries a **Generator strategy** line (constructive; no suchThat) |
+| 7 | Generator strategies | ✅ — every property carries a **Generator strategy** line (constructive Hedgehog gens; no `.ensure`-filtering; no Arbitrary) |
 | 8 | Temporal trigger/response | ✅ — vacuous: no Temporal Properties section in any spec (Ring 9 unchecked) |
 | 9 | No vague words | ✅ |
 | 10 | Unreachable claims proven | ✅ — MaxDepth bound → Iron type + CN stub |
@@ -91,11 +91,11 @@ is implemented, so resolution is enforced at the right time.
 |---|-------|-----------------|
 | 1 | Given/When/Then concrete | ✅ |
 | 2 | Then observable | ✅ — verdicts, reports, Left values, graph nodes/edges, counters |
-| 3 | Scenarios testable | ✅ — munit + munit-scalacheck + cats-effect IO per capability-profile.md |
+| 3 | Scenarios testable | ✅ — munit + Hedgehog (`HedgehogSuite`) + cats-effect IO per capability-profile.md |
 | 4 | Error paths specified | ✅ |
 | 5 | New concepts declared | ✅ |
 | 6 | Reused concepts resolved | ✅* — forward refs to specs 1–3 |
-| 7 | Generator strategies | ✅ — every property carries a **Generator strategy** line (constructive; no suchThat) |
+| 7 | Generator strategies | ✅ — every property carries a **Generator strategy** line (constructive Hedgehog gens; no `.ensure`-filtering; no Arbitrary) |
 | 8 | Temporal trigger/response | ✅ — vacuous: no Temporal Properties section in any spec (Ring 9 unchecked) |
 | 9 | No vague words | ✅ |
 | 10 | Unreachable claims proven | ✅ — 'unreachable target impossible by construction' cites the type-level argument (generator consumes only graph.edges) + Ring 8 obligation |
@@ -110,11 +110,11 @@ is implemented, so resolution is enforced at the right time.
 |---|-------|-----------------|
 | 1 | Given/When/Then concrete | ✅ |
 | 2 | Then observable | ✅ — verdicts, reports, Left values, graph nodes/edges, counters |
-| 3 | Scenarios testable | ✅ — munit + munit-scalacheck + cats-effect IO per capability-profile.md |
+| 3 | Scenarios testable | ✅ — munit + Hedgehog (`HedgehogSuite`) + cats-effect IO per capability-profile.md |
 | 4 | Error paths specified | ✅ |
 | 5 | New concepts declared | ✅ |
 | 6 | Reused concepts resolved | ✅* — forward refs to specs 1–4 |
-| 7 | Generator strategies | ✅ — every property carries a **Generator strategy** line (constructive; no suchThat) |
+| 7 | Generator strategies | ✅ — every property carries a **Generator strategy** line (constructive Hedgehog gens; no `.ensure`-filtering; no Arbitrary) |
 | 8 | Temporal trigger/response | ✅ — vacuous: no Temporal Properties section in any spec (Ring 9 unchecked) |
 | 9 | No vague words | ✅ |
 | 10 | Unreachable claims proven | ✅ — wrong-typed SUT response unrepresentable → dependent type + CN stub |
@@ -129,11 +129,11 @@ is implemented, so resolution is enforced at the right time.
 |---|-------|-----------------|
 | 1 | Given/When/Then concrete | ✅ |
 | 2 | Then observable | ✅ — verdicts, reports, Left values, graph nodes/edges, counters |
-| 3 | Scenarios testable | ✅ — munit + munit-scalacheck + cats-effect IO per capability-profile.md |
+| 3 | Scenarios testable | ✅ — munit + Hedgehog (`HedgehogSuite`) + cats-effect IO per capability-profile.md |
 | 4 | Error paths specified | ✅ |
 | 5 | New concepts declared | ✅ |
 | 6 | Reused concepts resolved | ✅* — forward refs to specs 1–5 |
-| 7 | Generator strategies | ✅ — every property carries a **Generator strategy** line (constructive; no suchThat) |
+| 7 | Generator strategies | ✅ — every property carries a **Generator strategy** line (constructive Hedgehog gens; no `.ensure`-filtering; no Arbitrary) |
 | 8 | Temporal trigger/response | ✅ — vacuous: no Temporal Properties section in any spec (Ring 9 unchecked) |
 | 9 | No vague words | ✅ |
 | 10 | Unreachable claims proven | ✅ — MaxRetryCount → Iron + CN stub |
@@ -148,11 +148,11 @@ is implemented, so resolution is enforced at the right time.
 |---|-------|-----------------|
 | 1 | Given/When/Then concrete | ✅ |
 | 2 | Then observable | ✅ — verdicts, reports, Left values, graph nodes/edges, counters |
-| 3 | Scenarios testable | ✅ — munit + munit-scalacheck + cats-effect IO per capability-profile.md |
+| 3 | Scenarios testable | ✅ — munit + Hedgehog (`HedgehogSuite`) + cats-effect IO per capability-profile.md |
 | 4 | Error paths specified | ✅ |
 | 5 | New concepts declared | ✅ |
 | 6 | Reused concepts resolved | ✅* — forward refs to specs 1–6 |
-| 7 | Generator strategies | ✅ — every property carries a **Generator strategy** line (constructive; no suchThat) |
+| 7 | Generator strategies | ✅ — every property carries a **Generator strategy** line (constructive Hedgehog gens; no `.ensure`-filtering; no Arbitrary) |
 | 8 | Temporal trigger/response | ✅ — vacuous: no Temporal Properties section in any spec (Ring 9 unchecked) |
 | 9 | No vague words | ✅ |
 | 10 | Unreachable claims proven | ✅ — contract/oracle drift is a type error → CN stub realizes the compile-evidence claim |
@@ -167,11 +167,11 @@ is implemented, so resolution is enforced at the right time.
 |---|-------|-----------------|
 | 1 | Given/When/Then concrete | ✅ |
 | 2 | Then observable | ✅ — verdicts, reports, Left values, graph nodes/edges, counters |
-| 3 | Scenarios testable | ✅ — munit + munit-scalacheck + cats-effect IO per capability-profile.md |
+| 3 | Scenarios testable | ✅ — munit + Hedgehog (`HedgehogSuite`) + cats-effect IO per capability-profile.md |
 | 4 | Error paths specified | ✅ |
 | 5 | New concepts declared | ✅ |
 | 6 | Reused concepts resolved | ✅* — forward refs to specs 1–5 |
-| 7 | Generator strategies | ✅ — every property carries a **Generator strategy** line (constructive; no suchThat) |
+| 7 | Generator strategies | ✅ — every property carries a **Generator strategy** line (constructive Hedgehog gens; no `.ensure`-filtering; no Arbitrary) |
 | 8 | Temporal trigger/response | ✅ — vacuous: no Temporal Properties section in any spec (Ring 9 unchecked) |
 | 9 | No vague words | ✅ |
 | 10 | Unreachable claims proven | ✅ — ParallelWidth ≤ 4 cap → Iron + CN stubs (type-level, not a runtime guard) |

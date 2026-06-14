@@ -20,28 +20,48 @@
 
 | Type | Underlying | Iron Constraint | Package | Introduced By |
 |------|-----------|-----------------|---------|---------------|
+| `OperationName` | `String` | `Not[Blank]` (via `RefinedType`) | `io.gruggiero.accordant4s.domain` | oracle-core |
+| `CallLabel` | `String` | `Not[Blank]` (via `RefinedType`) | `io.gruggiero.accordant4s.domain` | oracle-core |
+| `StateProfile[S]` | `NonEmptyList[S]` | non-empty + `Eq`-dedup (smart ctors `one`/`of`; no public ctor from a possibly-empty collection) | `io.gruggiero.accordant4s.domain` | oracle-core |
 
 ## Sealed Traits and Enums
 
 | Type | Kind | Variants | Package | Introduced By |
 |------|------|----------|---------|---------------|
+| `SpecViolation` | `enum derives CanEqual` | `CheckFailed(op, detail)`, `UnknownOperation(name)`, `NoBranchMatched(op, branchFailures)`, `ProfileExhausted(op)` | `io.gruggiero.accordant4s.domain` | oracle-core |
+| `Outcome[Res, S]` | `enum derives CanEqual` | `Same(check)`, `Next(check, transition)`, `OneOf(branches)` | `io.gruggiero.accordant4s.domain` | oracle-core |
+| `Verdict[S]` | `enum derives CanEqual` | `Conformant(StateProfile[S])`, `Deviant(NonEmptyList[SpecViolation])` | `io.gruggiero.accordant4s.domain` | oracle-core |
 
 ## Case Classes (Domain Value Objects)
 
 | Type | Fields | Package | Introduced By |
 |------|--------|---------|---------------|
+| `Operation[Req, Res, S]` | `name: OperationName`, `behaviour: (Req,S)=>Outcome[Res,S]`, `mock: (Req,S)=>hedgehog.Gen[Res]` | `io.gruggiero.accordant4s.spec` | oracle-core |
+| `Spec[S]` | `operations: Map[OperationName, Operation[?,?,S]]` (+ `register`, `allows`; `Spec.empty`) | `io.gruggiero.accordant4s.spec` | oracle-core |
+| `OutcomeEval.Branch[Res, S]` | `check: ResponseCheck[Res]`, `transition: (Res,S)=>S` (`matches`/`next`) | `io.gruggiero.accordant4s.domain` | oracle-core |
+| `BankState` *(test fixture)* | `accounts: Map[String, BigDecimal]` (+ `Eq`/`Hash`/`Show`) | `io.gruggiero.accordant4s.fixtures` (test sources) | oracle-core |
 
 ## Service Traits
 
 | Trait | Type Param | Methods | Package | Introduced By |
 |-------|-----------|---------|---------|---------------|
+| `StateOps[S]` | `S` | `eqS`, `hashS`, `showS`, `canEqualS` (given `StateOps.derived`) | `io.gruggiero.accordant4s.domain` | oracle-core |
+
+## Type Aliases & Pure Objects
+
+| Concept | Kind | Signature / Members | Package | Introduced By |
+|---------|------|---------------------|---------|---------------|
+| `ResponseCheck[Res]` | type alias | `Res => ValidatedNel[SpecViolation, Unit]` | `io.gruggiero.accordant4s.domain` | oracle-core |
+| `OutcomeEval` | pure object | `flatten`, `survivors`, `Branch` | `io.gruggiero.accordant4s.domain` | oracle-core |
+| `ProfileEval` | pure object | `allows(name, behaviour, res, profile)` | `io.gruggiero.accordant4s.domain` | oracle-core |
+| `expect` | DSL object | `apply(check)`, `Builder.sameState/.thenState`, `oneOf` | `io.gruggiero.accordant4s.spec` | oracle-core |
 
 ## Smithy Models
 
 | Model | Kind | Operations/Fields | Location | Introduced By |
 |-------|------|-------------------|----------|---------------|
 
-## ScalaCheck Generators
+## Hedgehog Generators
 
 | Generator | Type | Location | Introduced By |
 |-----------|------|----------|---------------|

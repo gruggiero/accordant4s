@@ -9,11 +9,12 @@ exploration, hand-written scenarios, fuzzers, production replay). The single cal
 `spec.Allows(operation, request, response, state)` turns the spec into an executable
 truth table usable by any test sequence.
 
-No Scala library provides this combination. ScalaCheck's `Commands` is the closest
-analogue but lacks BFS exploration of reachable states from a finite input set, a
-structured `Expect` DSL with non-deterministic branching (`Expect.OneOf`), state-profile
-tracking for indefinite failures, and a clean `allows` oracle API usable outside tests
-(see `docs/accordant-scala3-report.md` §4.2).
+No Scala library provides this combination. The state-machine testing in ScalaCheck's
+`Commands` and in Hedgehog (which this change adopts as its property-testing engine) is
+the closest analogue, but both lack BFS exploration of reachable states from a finite
+input set, a structured `Expect` DSL with non-deterministic branching (`Expect.OneOf`),
+state-profile tracking for indefinite failures, and a clean `allows` oracle API usable
+outside tests (see `docs/accordant-scala3-report.md` §4.2).
 
 The `verified-scala3` pipeline needs this as its missing behavioural-conformance
 layer (the report calls it "Ring 4.5" in its own pipeline numbering — unrelated to
@@ -33,7 +34,7 @@ instead of imperative graph walking, and http4s/smithy4s instead of `HttpExecuta
 ### Affected Capabilities
 
 - `specs/oracle-core/spec.md` — `Outcome[Res, S]` ADT, `ResponseCheck`, `Verdict[S]`, `StateProfile[S]`, `Operation[Req, Res, S]`, `Spec[S]` registry, the `allows` oracle, response-dependent transitions with mocks
-- `specs/input-sets/spec.md` — labeled `OperationCall` values, `InputSet[S]` composition, ScalaCheck `Gen`-backed input sources (replaces `Accordant.Choose`)
+- `specs/input-sets/spec.md` — labeled `OperationCall` values, `InputSet[S]` composition, Hedgehog `Gen`-backed input sources (replaces `Accordant.Choose`)
 - `specs/state-graph/spec.md` — BFS exploration of reachable states from a spec + input set (`fs2.Stream`), depth bounding, self-loop detection
 - `specs/test-generation/spec.md` — path-selection algorithms (state coverage, transition coverage, random walk), `TestCase` values, circe JSON persistence
 - `specs/test-execution/spec.md` — `SystemUnderTest[F]` abstraction, `TestCaseExecutor` validating every step through `allows`, bracket-safe before/after hooks, munit integration
@@ -92,9 +93,9 @@ Ring availability per `capability-profile.md` — Stryker4s/Scalafix/WartRemover
 configs do not exist yet and are added by spec 1.
 
 - [x] Ring 0: Compilation — strict scalac flags (`-Werror`, `strictEquality`), Iron refined types
-- [x] Ring 1: Lint — Scalafix DisableSyntax + RemoveUnused, WartRemover, dangerous-pattern scan (config added by spec 1)
+- [x] Ring 1: Lint — Scalafix DisableSyntax + RemoveUnused + OrganizeImports, dangerous-pattern scan (config added by spec 1). WartRemover deferred — no Scala 3.8.4 build exists yet (see Risks)
 - [x] Ring 2: Architecture — layer dependencies (domain → nothing, spec → domain, engine → domain+spec), sealed domain types, effect discipline (rules added by spec 1)
-- [x] Ring 3: Property-based tests — MANDATORY for all 8 specs (munit-scalacheck per detected stack); no waivers claimed
+- [x] Ring 3: Property-based tests — MANDATORY for all 8 specs (Hedgehog via `HedgehogSuite` per detected stack; integrated shrinking, no `Arbitrary`); no waivers claimed
 - [x] Ring 4: Wire/persistence compatibility — applies to `test-generation` and `linearizability` (circe file records); fixtures created as the compatibility baseline since none exist yet
 - [x] Ring 5: Mutation testing — Stryker4s on the spec's changed files (dynamic targeting), thresholds 90–95% for pure kernels (`domain`, `spec`, `engine.verified`, generation), 80–90% for effectful engine code
 - [x] Ring 6: Formal verification — Stainless on the pure kernels only: outcome evaluation (`oracle-core`) and the permutation checker (`linearizability`); best-effort — Stainless is not currently installed (see capability-profile.md)
@@ -165,5 +166,6 @@ Directional preview — refined in the specs and design:
 | `n!` permutation blow-up in linearizability checker | Parallel sections bounded (Accordant uses pairs; we cap at a small `ParallelWidth`), short-circuit on first conformant ordering |
 | Stainless (Ring 6) may not accept the kernel as written (PureScala subset, Scala-version support; not currently installed) | Ring 6 scoped to two small pure functions in a `verified/`-style package; failure downgrades to Ring 3/5 coverage, recorded in the checkpoint |
 | Stryker4s not yet configured in build | Spec 1 adds the sbt plugin + config; if it proves incompatible with Scala 3.8.4, Ring 5 is marked ⏭️ per checkpoint with rationale |
+| WartRemover has no `wartremover_3.8.4` build on Maven Central (sbt-wartremover 3.2.3 is Oct 2024, predates Scala 3.8.4) | Plugin omitted from `project/plugins.sbt`; Ring 1 covered by Scalafix `DisableSyntax` (var/null/throw/return/casts) instead. `.get`-style partial-extraction checks (`OptionPartial`/`EitherProjectionPartial`/`TryPartial`) have no Scalafix equivalent — covered by Ring 8 review until wartremover publishes a compatible build, then re-add per capability-profile.md |
 | smithy4s `Service` introspection API churn (0.18.x) | Derivation kept in an isolated module; pinned version; compile-time-only dependency surface |
-| Dependency creep in core (circe, scalacheck at Compile scope) | Deliberate, documented in design.md: accordant4s is itself a testing library, so ScalaCheck `Gen` for mocks and circe for persistence are legitimate core dependencies |
+| Dependency creep in core (circe, hedgehog-core at Compile scope) | Deliberate, documented in design.md: accordant4s is itself a testing library, so Hedgehog `Gen` for mocks and circe for persistence are legitimate core dependencies |

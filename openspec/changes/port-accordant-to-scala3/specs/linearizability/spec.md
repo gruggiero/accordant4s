@@ -113,14 +113,19 @@ kernel; only the parallel execution touches `IO`.
 
 ### Property: Sequential executions are always linearizable
 
-**Generator strategy**: constructive `genConcurrentCase` (prefix from graph paths, parallel section of `Gen.chooseNum(2, width)` distinct calls applicable at the prefix end-state, observation suffix) × `genPermutationOrder` (`Gen.oneOf` of index permutations)
+**Generator strategy** (Hedgehog): constructive `genConcurrentCase` (prefix from graph paths, parallel section of `Gen.int(Range.linear(2, width))` distinct calls applicable at the prefix end-state, observation suffix) × `genPermutationOrder` (`Gen.element1` over the index permutations)
 
 **Invariant**: If the parallel section is actually executed one-at-a-time in ANY order against a conformant SUT, the checker finds an ordering — sequential behaviour is never flagged as a race.
 
 ```
-forAll(genConcurrentCase, genPermutationOrder) { (cc, order) =>
-  val observed = runSequentially(RefSut(spec), cc.parallel.reorder(order))
-  Linearization.findOrdering(spec, prefixProfile(cc), observed).isDefined
+property("sequential executions are always linearizable") {
+  for {
+    cc    <- genConcurrentCase.forAll
+    order <- genPermutationOrder.forAll
+  } yield {
+    val observed = runSequentially(RefSut(spec), cc.parallel.reorder(order))
+    Result.assert(Linearization.findOrdering(spec, prefixProfile(cc), observed).isDefined)
+  }
 }
 ```
 
@@ -131,9 +136,14 @@ forAll(genConcurrentCase, genPermutationOrder) { (cc, order) =>
 **Invariant**: The verdict (Some/None) does not depend on the order in which observed results are presented.
 
 ```
-forAll(genObservedResults, genPermutationOrder) { (observed, order) =>
-  findOrdering(spec, profile, observed).isDefined ==
-    findOrdering(spec, profile, observed.reorder(order)).isDefined
+property("checker is order-insensitive in its input") {
+  for {
+    observed <- genObservedResults.forAll
+    order    <- genPermutationOrder.forAll
+  } yield Result.assert(
+    findOrdering(spec, profile, observed).isDefined ==
+      findOrdering(spec, profile, observed.reorder(order)).isDefined
+  )
 }
 ```
 
@@ -144,23 +154,29 @@ forAll(genObservedResults, genPermutationOrder) { (observed, order) =>
 **Invariant**: Whenever the checker returns a witness ordering, folding the oracle over exactly that ordering is `Conformant` and ends in the returned profile.
 
 ```
-forAll(genObservedResults) { observed =>
-  findOrdering(spec, profile, observed).forall { (perm, endProfile) =>
+property("witness validity") {
+  for {
+    observed <- genObservedResults.forAll
+  } yield Result.assert(findOrdering(spec, profile, observed).forall { (perm, endProfile) =>
     foldAllows(spec, profile, perm) == Conformant(endProfile)
-  }
+  })
 }
 ```
 
 ### Property: Exhaustiveness on rejection
 
-**Generator strategy**: `genObservedResults` with `Gen.frequency` biased toward non-linearizable result sets (e.g. double-success); verdict cross-checked against explicit brute-force enumeration
+**Generator strategy** (Hedgehog): `genObservedResults` with `Gen.frequency1` biased toward non-linearizable result sets (e.g. double-success); verdict cross-checked against explicit brute-force enumeration
 
 **Invariant**: When the checker returns `None`, every permutation of the observed results deviates under the oracle (cross-checked against brute-force enumeration for width ≤ 4).
 
 ```
-forAll(genObservedResults) { observed =>
-  findOrdering(spec, profile, observed).isEmpty ==>
-    observed.permutations.forall(p => foldAllows(spec, profile, p).isDeviant)
+property("exhaustiveness on rejection") {
+  for {
+    observed <- genObservedResults.forAll
+  } yield Result.assert(
+    !findOrdering(spec, profile, observed).isEmpty ||
+      observed.permutations.forall(p => foldAllows(spec, profile, p).isDeviant)
+  )
 }
 ```
 
@@ -171,8 +187,10 @@ forAll(genObservedResults) { observed =>
 **Invariant**: `decode(encode(record)) == Right(record)` for all concurrent file records.
 
 ```
-forAll(genConcurrentRecord) { rec =>
-  ConcurrentPersistence.fromJson(ConcurrentPersistence.toJson(rec)) == Right(rec)
+property("concurrent persistence roundtrip") {
+  for {
+    rec <- genConcurrentRecord.forAll
+  } yield Result.assert(ConcurrentPersistence.fromJson(ConcurrentPersistence.toJson(rec)) == Right(rec))
 }
 ```
 

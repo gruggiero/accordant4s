@@ -12,12 +12,12 @@ and deepwiki.com/microsoft/accordant):
 | `Spec<TState>.Operation<TReq,TRes>(name, lambda)` | `Spec[S].register(Operation[Req, Res, S])` | typed handle, no string-keyed casts at use sites |
 | `Expect.That(p).SameState()` | `Outcome.Same(check)` | `check: ResponseCheck[Res]` |
 | `Expect.That(p).ThenState(mutate)` | `Outcome.Next(check, (res, s) => s.copy(...))` | transition sees the **response** (response-dependent state, tutorial 03) |
-| `.ThenState(lambda, mock: ...)` | `Operation.mock: (Req, S) => Gen[Res]` | mock lives on the operation; used only during offline exploration |
+| `.ThenState(lambda, mock: ...)` | `Operation.mock: (Req, S) => Gen[Res]` (`hedgehog.Gen`) | mock lives on the operation; used only during offline exploration |
 | `Expect.OneOf(...)` | `Outcome.OneOf(NonEmptyList[Outcome])` | indefinite failures (how-to: indefinite-failures) |
 | state profile (set of candidate states) | `StateProfile[S]` — `Eq`-deduplicated non-empty list | `allows` evaluates all candidates, keeps survivors |
 | `spec.Allows(op, req, res, state)` → `(bool, msg, next)` | `spec.allows(op, req, res, profile): Verdict[S]` | `Conformant(profile)` \| `Deviant(NonEmptyList[SpecViolation])` — accumulating, not first-failure |
 | `StateGraph` + `TestCaseGenerator` (MaxDepth, StateCoverage/TransitionCoverage/RandomWalk) | `GraphExplorer` (pure BFS, fs2 facade) + `TestCaseGenerator` | same three algorithms, same depth bound |
-| `InputSet` + `op.With(req, label)` / `Accordant.Choose` | `InputSet[S]` + `op.withInput(req, label)` + `InputSet.fromGen` | ScalaCheck `Gen` replaces `Choose.Each<T>()` |
+| `InputSet` + `op.With(req, label)` / `Accordant.Choose` | `InputSet[S]` + `op.withInput(req, label)` + `InputSet.fromGen` | Hedgehog `Gen` replaces `Choose.Each<T>()` |
 | `SystemChecker` / `TestCaseExecutor` (+ `BeforeEachAsync`/`AfterEachAsync`) | `TestCaseExecutor.run(testCase, sut)` with `Resource`/bracket hooks | hooks are bracket-safe by construction |
 | `ConcurrentTestCaseFileRecord` JSON persistence | circe codecs for `TestCase`/`ConcurrentTestCase` | roundtrip-property-tested |
 | `GenerateConcurrentTests` + linearizability check | `ConcurrentTestCase` (prefix/parallel/suffix) + `LinearizabilityChecker` | ∃-permutation search, pure kernel |
@@ -38,14 +38,17 @@ mirroring Accordant's assembly split so users only depend on what they use:
 
 | Module | Artifact | Depends on | Contents |
 |--------|----------|-----------|----------|
-| `core` | `accordant4s-core` | cats, cats-effect, fs2-core, iron + iron-cats, scalacheck, circe-core/parser | domain ADTs, Spec/oracle, graph, generation, execution, linearizability, persistence |
+| `core` | `accordant4s-core` | cats, cats-effect, fs2-core, iron + iron-cats, hedgehog-core, circe-core/parser | domain ADTs, Spec/oracle, graph, generation, execution, linearizability, persistence |
 | `munit` | `accordant4s-munit` | core, munit, munit-cats-effect (Compile scope) | `AccordantSuite` — emits generated test cases as munit tests |
 | `http4s` | `accordant4s-http4s` | core, http4s-client, http4s-circe | HTTP `SystemUnderTest[IO]` binding |
 | `smithy4s` | `accordant4s-smithy4s` | core, smithy4s-core | `Operation` derivation from Smithy services |
 
-ScalaCheck and circe at Compile scope in `core` is deliberate: accordant4s *is* a
-testing library — `Gen` powers response mocks and input sets; circe powers test-case
-persistence. This is recorded here so Ring 2 (architecture) reviews don't flag it.
+Hedgehog (hedgehog-core) and circe at Compile scope in `core` is deliberate:
+accordant4s *is* a testing library — `hedgehog.Gen` powers response mocks and input
+sets; circe powers test-case persistence. This is recorded here so Ring 2
+(architecture) reviews don't flag it. Hedgehog has no `Arbitrary` typeclass, so all
+generators (including refined-type ones, via raw value → smart constructor) are
+written explicitly.
 
 ### Layers (Ring 2 LayerDependencies config)
 
@@ -61,10 +64,10 @@ persistence. This is recorded here so Ring 2 (architecture) reviews don't flag i
 
 | Package | Layer | Purpose |
 |---------|-------|---------|
-| `domain` | Domain | `Outcome`, `Verdict`, `SpecViolation`, `StateProfile`, `OperationName`, `CallLabel`, `MaxDepth`, `TestCase`, `ConcurrentTestCase`, `ExecutionReport`, `CoverageAlgorithm` |
+| `domain` | Domain | `Outcome`, `Verdict`, `SpecViolation`, `StateProfile`, `StateOps`, `ResponseCheck`, `OperationName`, `CallLabel`, the pure oracle kernel `OutcomeEval`/`ProfileEval` (Option A), `MaxDepth`, `TestCase`, `ConcurrentTestCase`, `ExecutionReport`, `CoverageAlgorithm` |
 | `spec` | Spec | `Operation`, `Spec`, `OperationCall`, `InputSet`, the `expect` constructor DSL |
 | `engine` | Engine | `GraphExplorer`, `StateGraph`, `TestCaseGenerator`, `TestCaseExecutor`, `LinearizabilityChecker`, `SystemUnderTest` |
-| `engine.verified` | Engine (pure) | Ring 6 kernels: outcome evaluation, permutation search — Stainless-compatible subset, no fs2/IO imports |
+| `engine.verified` | Engine (pure) | Ring 6 kernels that legitimately depend on `spec` (e.g. the linearizability permutation search) — Stainless-compatible subset, no fs2/IO. The oracle-core kernel lives in `domain` instead (Option A) so `spec` can use it. |
 | `persist` | Persistence | circe codecs for `TestCase`/`ConcurrentTestCase` file records |
 
 ## Effect Boundaries
@@ -80,9 +83,55 @@ signature via a `SpecF[F, S]` wrapper, not the ADTs).
 
 | Module / Function | Purpose | Ring 6? |
 |-------------------|---------|---------|
-| `engine.verified.OutcomeEval.evaluate(outcome, res, state)` | match one outcome against one (response, state) | Yes |
-| `engine.verified.ProfileEval.allows(branches, res, profile)` | survivor-set computation over a profile | Yes |
+| `domain.OutcomeEval.{flatten,survivors}` | flatten an outcome tree / survivor states for a (response, candidates) | Yes |
+| `domain.ProfileEval.allows(name, behaviour, res, profile)` | survivor-set computation over a profile | Yes |
 | `engine.verified.Linearization.exists(perms, step)` | ∃-permutation search (bounded) | Yes (best-effort) |
+
+> **oracle-core implementation decision (Option A, human-approved).** The pure
+> oracle kernel was placed in **`domain`** (not `engine.verified`) so that
+> `spec.Spec.allows` can delegate to it while keeping the layer arrow strictly
+> one-directional (`engine → spec → domain`). Putting it in `engine.verified`
+> would have forced `spec → engine.verified` (and a `spec ↔ engine.verified`
+> cycle, since the kernel needs `Operation`), violating the Ring 2 rule
+> `spec → [domain]`. Consequently `ProfileEval.allows` takes domain-typed
+> arguments `(name: OperationName, behaviour: S => Outcome[Res,S], res, profile)`
+> — the `spec.Operation` is unwrapped inside `Spec.allows` (which calls
+> `op.behaviour(req, _)`), so the kernel never imports `spec`. This matches the
+> Pure Code table's domain-typed signatures and deviates from the Step-1 typed
+> contract only in package (`engine.verified` → `domain`) and in dropping the
+> `op:` convenience parameter. Ring 6 (Stainless) therefore targets the
+> `domain` kernel.
+>
+> **Ring 6 mechanics.** Stainless's bundled frontend is pinned to Scala 3.7.2,
+> so it runs on a dedicated leaf module `verified` (`scalaVersion := 3.7.2`,
+> strict flags relaxed) — the shipped modules stay on 3.8.4 (TASTy is only
+> backward-compatible, so a 3.7.2 leaf is safe; nothing depends *up* into it).
+> `verified/OracleKernel.scala` is a PureScala MIRROR of the survivor/verdict
+> algorithm (states as `BigInt`, `EvalBranch` = (passed?, next), no
+> Iron/cats/opaque). Stainless proves the model; the model and the shipped
+> `domain` kernel are tied together **mechanically** by a bridge property
+> (`OracleModelBridgeTests` in `core`, which `dependsOn(verified % Test)`): it
+> runs the real `ProfileEval.allows` and the model `OracleKernel.survivors` on
+> the same generated inputs and asserts they agree on conformance + survivor
+> count, so drift in either side fails CI. `verified/stainlessEnabled` defaults
+> to OFF (the bridge only needs the model COMPILED, not re-verified, so
+> `core/test` stays fast); verification is the explicit `sbt ring6` alias. VCs
+> must be quantifier-free: z3 is single-threaded with no default timeout, so a
+> `forall/exists` goal hangs unbounded — soundness (a `forall/exists` shape) is
+> left to Ring 3, and Stainless proves the quantifier-free conformance +
+> termination VCs.
+>
+> **Violation accumulation model.** `Spec.allows` produces a *flat* list of the
+> atomic `CheckFailed` violations every failing branch emits, across all
+> candidates (the binding Ring-3 invariant "violation count == total failed
+> atomic checks"). `UnknownOperation` is produced for an unregistered handle;
+> `ProfileExhausted` is the unreachable totality fallback (no survivors yet no
+> atomic violation — impossible for the non-empty outcomes built here, but it
+> keeps `allows` total without a partial `.get`/`throw`). `NoBranchMatched` is
+> part of the committed algebra but is **not constructed by oracle-core**:
+> per-candidate structured wrapping would break the flat-count invariant, so it
+> is reserved for the richer deviation reports in test-execution /
+> linearizability. (Flagged in the Ring 8 review below and at the checkpoint.)
 | `domain.*` smart constructors | Iron-validated construction | No (trivial, covered by Ring 0 + compile-negative tests) |
 | `engine.GraphExplorer.bfs` (pure tail-recursive core) | bounded BFS over `(Spec, InputSet)` | No (uses `Gen` sampling for mocks — not PureScala) |
 | `engine.TestCaseGenerator.*` | path selection over a materialized graph | No (RandomWalk uses seeded RNG; Rings 3/5 cover it) |
@@ -266,10 +315,12 @@ none (no model checker / no telemetry stack — see capability-profile.md).
 
 - Restructure `build.sbt` into the four modules above (`core`, `munit`, `http4s`, `smithy4s`).
 - `project/Dependencies.scala` additions (versions per `openspec/config.yaml`):
-  iron + iron-cats 2.6.x (+ iron-scalacheck % Test), circe-core/generic/parser 0.14.x,
+  iron + iron-cats 2.6.x, circe-core/generic/parser 0.14.x,
   http4s-client/http4s-circe 0.23.x, smithy4s-core 0.18.x (+ sbt plugin for the test
-  fixture), scalacheck moved to Compile scope in `core`, munit/munit-cats-effect to
-  Compile scope in the `munit` module.
+  fixture), hedgehog-core at Compile scope in `core` (exposed by `Operation.mock`),
+  hedgehog-munit % Test (property suites via `HedgehogSuite`), munit/munit-cats-effect
+  to Compile scope in the `munit` module. No iron-scalacheck (Hedgehog has no
+  `Arbitrary` typeclass — refined-type generators are hand-written).
 - Add Scalafix (`.scalafix.conf`: DisableSyntax, RemoveUnused, OrganizeImports) and
   WartRemover settings, and Stryker4s config (`stryker4s.conf`, threshold 80%) — the
   rings the schema assumes.
