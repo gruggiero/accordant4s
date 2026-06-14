@@ -166,6 +166,27 @@ property("fromGen determinism and bound") {
 | Duplicate generated requests collapse before labeling | Scenario: generator collapse | scenario test | "gen-backed — collapse" |
 | Existential `Req`/`Res` never leak as casts | design constraint | type system + compile-negative test + adversarial review (Ring 8 greps for `asInstanceOf`) | typed contract CN stub |
 
+## Requirement ↔ Test Cross-Reference
+
+Implemented and verified (`InputSetsProperties`, `InputFixtures`, `InputSetsTypeContract`):
+
+| Spec heading | Test | Status |
+|---|---|---|
+| Req: Labeled operation calls / Scenario: Happy path | `labeled calls — happy path` | ✅ |
+| Scenario: Edge — same operation, many inputs | `labeled calls — many inputs` | ✅ |
+| Req: InputSet composition / Scenario: Happy — disjoint union | `composition — disjoint union` | ✅ |
+| Scenario: Error — colliding labels | `composition — colliding labels` | ✅ |
+| Req: Gen-backed input sources / Scenario: deterministic sampling | `fromGen — deterministic sampling` | ✅ |
+| Scenario: Edge — generator collapse | `fromGen — generator collapse` | ✅ |
+| Req: Gen-backed — label format `<opName>(<Show[Req]>)` | `fromGen — label format` | ✅ |
+| Req: Gen-backed — "at most n" (n ≤ 0 → empty) | `fromGen — non-positive n yields empty` | ✅ |
+| Invariant: label uniqueness inside any InputSet (non-injective Show) | `fromGen — colliding labels collapse to keep labels unique` | ✅ |
+| Property: withInput roundtrip | `withInput roundtrip` | ✅ |
+| Property: Composition associative and label-preserving | `composition is associative and label-preserving` | ✅ |
+| Property: fromGen determinism and bound | `fromGen determinism and bound` | ✅ |
+| Compile-Negative: `CallLabel("")` literal | `CN — blank CallLabel literal rejected` | ✅ |
+| Compile-Negative: cross-operation request reuse | `CN — cross-operation request is a type error` | ✅ |
+
 ## Verification Rings
 
-Ring 0 ✅ · Ring 1 ✅ · Ring 2 ✅ · Ring 3 ✅ · Ring 4 — · Ring 5 ✅ (90–95%, spec layer) · Ring 6 — · Ring 7 — · Ring 8 ✅ · Ring 9 —
+Ring 0 ✅ · Ring 1 ✅ · Ring 2 ✅ · Ring 3 ✅ · Ring 4 — · Ring 5 ✅ (100%, spec layer) · Ring 6 — · Ring 7 — · Ring 8 ✅ · Ring 9 —

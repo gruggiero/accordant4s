@@ -62,7 +62,15 @@ lazy val verified = (project in file("verified"))
   .settings(
     name              := "accordant4s-verified",
     scalaVersion      := "3.7.2",
-    scalacOptions     := Seq("-deprecation", "-feature"),
+    // Stainless injects its library sources into this module's compile; they emit
+    // pattern-match-exhaustivity warnings we don't own (and can't fix). Silence
+    // warnings from that source path only — our model (`OracleKernel.scala`) keeps
+    // full warnings. This also keeps `core/test` quiet (it compiles `verified`).
+    scalacOptions := Seq(
+      "-deprecation",
+      "-feature",
+      "-Wconf:src=.*stainless-library.*:silent"
+    ),
     wartremoverErrors := Seq.empty,
     semanticdbEnabled := false,
     // Default OFF: `verified/compile` (incl. as `core`'s bridge-test dependency) is then a

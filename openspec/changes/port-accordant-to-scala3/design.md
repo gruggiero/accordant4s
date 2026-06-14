@@ -315,13 +315,14 @@ none (no model checker / no telemetry stack — see capability-profile.md).
 
 - Restructure `build.sbt` into the four modules above (`core`, `munit`, `http4s`, `smithy4s`).
 - `project/Dependencies.scala` additions (versions per `openspec/config.yaml`):
-  iron + iron-cats 2.6.x, circe-core/generic/parser 0.14.x,
+  iron + iron-cats 3.0.2, circe-core/generic/parser 0.14.x,
   http4s-client/http4s-circe 0.23.x, smithy4s-core 0.18.x (+ sbt plugin for the test
   fixture), hedgehog-core at Compile scope in `core` (exposed by `Operation.mock`),
   hedgehog-munit % Test (property suites via `HedgehogSuite`), munit/munit-cats-effect
   to Compile scope in the `munit` module. No iron-scalacheck (Hedgehog has no
   `Arbitrary` typeclass — refined-type generators are hand-written).
-- Add Scalafix (`.scalafix.conf`: DisableSyntax, RemoveUnused, OrganizeImports) and
-  WartRemover settings, and Stryker4s config (`stryker4s.conf`, threshold 80%) — the
-  rings the schema assumes.
+- Add Scalafix (`.scalafix.conf`: DisableSyntax, RemoveUnused, OrganizeImports),
+  WartRemover (`sbt-wartremover` 3.5.8 — `Warts.unsafe` minus `TripleQuestionMark`,
+  ThisBuild errors; `verified` module exempt), and Stryker4s config
+  (`stryker4s.conf`, thresholds break=90/low=91/high=95) — the rings the schema assumes.
 - Keep `-Werror -Wunused:all -Wvalue-discard -language:strictEquality`.

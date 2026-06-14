@@ -46,17 +46,20 @@ context: |
     munit's framework). NOT ScalaCheck/munit-scalacheck. `hedgehog.Gen` is a
     Compile dependency of core because `Operation.mock` exposes it publicly
   - sbt plugins: sbt-scalafix 0.14.0 (semanticdb enabled), sbt-scalafmt
-    2.5.4, sbt-stryker4s 0.15.1, smithy4s-sbt-codegen 0.18.33
+    2.5.4, sbt-stryker4s 0.21.0, sbt-wartremover 3.5.8, smithy4s-sbt-codegen
+    0.18.33
   - CONFIGURED (Ring 1): .scalafix.conf (DisableSyntax, RemoveUnused,
     OrganizeImports), .scalafmt.conf (scala3 dialect) — both verified via
     scalafixAll --check / scalafmtCheckAll+scalafmtSbtCheck
-  - NOT AVAILABLE: WartRemover — no wartremover_3.8.4 build exists on Maven
-    Central; omitted from project/plugins.sbt, Scalafix DisableSyntax covers
-    the syntactic warts instead (see capability-profile.md)
-  - READY, UNTESTED: stryker4s.conf present (Ring 5, threshold 80%,
-    baseline mutate list — retarget per spec); Stainless (Ring 6) not
-    installed, best-effort per spec; no TLA+/Apalache (Ring 7); no otel4s/
-    Daut (Ring 9)
+  - ACTIVE (Ring 1): WartRemover (sbt-wartremover 3.5.8) — ThisBuild
+    wartremoverErrors = Warts.unsafe minus TripleQuestionMark (so `???` is
+    allowed); the `verified` module is exempt (wartremoverErrors := Seq.empty).
+    Verified clean across all modules (see capability-profile.md)
+  - READY/VERIFIED: stryker4s.conf present (Ring 5, thresholds break=90/
+    low=91/high=95 for the pure kernel, mutate list retargeted per spec —
+    100% on spec 1 & 2); Stainless (Ring 6) installed as a bundled plugin
+    (project/lib/sbt-stainless.jar) on the 3.7.2 `verified` module, 9/9 VCs;
+    no TLA+/Apalache (Ring 7); no otel4s/Daut (Ring 9)
 
   CODING CONVENTIONS (correctness-first):
   - Invalid states should be unrepresentable: prefer narrow enums/ADTs and

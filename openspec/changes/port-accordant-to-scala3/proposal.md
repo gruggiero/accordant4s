@@ -89,16 +89,16 @@ matching are exactly the bug class Ring 8 exists for.
 
 ## Verification Strategy
 
-Ring availability per `capability-profile.md` — Stryker4s/Scalafix/WartRemover
-configs do not exist yet and are added by spec 1.
+Ring availability per `capability-profile.md` — the Stryker4s / Scalafix /
+WartRemover / scalafmt configs are added by spec 1 (now in place and verified).
 
 - [x] Ring 0: Compilation — strict scalac flags (`-Werror`, `strictEquality`), Iron refined types
-- [x] Ring 1: Lint — Scalafix DisableSyntax + RemoveUnused + OrganizeImports, dangerous-pattern scan (config added by spec 1). WartRemover deferred — no Scala 3.8.4 build exists yet (see Risks)
+- [x] Ring 1: Lint — Scalafix DisableSyntax + RemoveUnused + OrganizeImports + WartRemover (sbt-wartremover 3.5.8, `Warts.unsafe` minus `TripleQuestionMark`), dangerous-pattern scan (config added by spec 1)
 - [x] Ring 2: Architecture — layer dependencies (domain → nothing, spec → domain, engine → domain+spec), sealed domain types, effect discipline (rules added by spec 1)
 - [x] Ring 3: Property-based tests — MANDATORY for all 8 specs (Hedgehog via `HedgehogSuite` per detected stack; integrated shrinking, no `Arbitrary`); no waivers claimed
 - [x] Ring 4: Wire/persistence compatibility — applies to `test-generation` and `linearizability` (circe file records); fixtures created as the compatibility baseline since none exist yet
 - [x] Ring 5: Mutation testing — Stryker4s on the spec's changed files (dynamic targeting), thresholds 90–95% for pure kernels (`domain`, `spec`, `engine.verified`, generation), 80–90% for effectful engine code
-- [x] Ring 6: Formal verification — Stainless on the pure kernels only: outcome evaluation (`oracle-core`) and the permutation checker (`linearizability`); best-effort — Stainless is not currently installed (see capability-profile.md)
+- [x] Ring 6: Formal verification — Stainless on the pure kernels only: outcome evaluation (`oracle-core`) and the permutation checker (`linearizability`); best-effort — Stainless installed as a bundled plugin (`project/lib/sbt-stainless.jar`) on the 3.7.2 `verified` module, 9/9 VCs on the oracle kernel (see capability-profile.md)
 - [ ] Ring 7: Model checking — no TLA+/Apalache available; the linearizability exhaustiveness invariant is instead enforced by a brute-force-comparison property (spec 8) and recorded as a test-enforced obligation
 - [x] Ring 8: Adversarial spec-compliance review — MANDATORY for all 8 specs
 - [ ] Ring 9: Telemetry — NOT applicable: this change introduces a library, not API operations or event sequences, and no telemetry stack is detected. No spec declares temporal properties. otel4s instrumentation of the executor is future work.
@@ -164,8 +164,8 @@ Directional preview — refined in the specs and design:
 | Existential `OperationCall` typing fights `-language:strictEquality` and type inference | The mandatory typed contract compiles the type skeleton first (human-gated); fall back to a sealed-trait-with-type-members encoding if match types get hairy |
 | State-space explosion in BFS | `MaxDepth` is mandatory (Iron `Positive`), exploration is a lazy `fs2.Stream`, canonicalization via `cats.Eq` + `Hash` collapses revisits |
 | `n!` permutation blow-up in linearizability checker | Parallel sections bounded (Accordant uses pairs; we cap at a small `ParallelWidth`), short-circuit on first conformant ordering |
-| Stainless (Ring 6) may not accept the kernel as written (PureScala subset, Scala-version support; not currently installed) | Ring 6 scoped to two small pure functions in a `verified/`-style package; failure downgrades to Ring 3/5 coverage, recorded in the checkpoint |
-| Stryker4s not yet configured in build | Spec 1 adds the sbt plugin + config; if it proves incompatible with Scala 3.8.4, Ring 5 is marked ⏭️ per checkpoint with rationale |
-| WartRemover has no `wartremover_3.8.4` build on Maven Central (sbt-wartremover 3.2.3 is Oct 2024, predates Scala 3.8.4) | Plugin omitted from `project/plugins.sbt`; Ring 1 covered by Scalafix `DisableSyntax` (var/null/throw/return/casts) instead. `.get`-style partial-extraction checks (`OptionPartial`/`EitherProjectionPartial`/`TryPartial`) have no Scalafix equivalent — covered by Ring 8 review until wartremover publishes a compatible build, then re-add per capability-profile.md |
+| Stainless (Ring 6) may not accept the kernel as written (PureScala subset, Scala-version support) | **RESOLVED** — installed as a bundled plugin (`project/lib/sbt-stainless.jar`) on a dedicated 3.7.2 `verified` module; the oracle-kernel mirror verifies 9/9 VCs, bridged to the real code by `OracleModelBridgeTests`. A failure would still downgrade to Ring 3/5, recorded at the checkpoint |
+| Stryker4s not yet configured in build | **RESOLVED** — spec 1 added `sbt-stryker4s` 0.21.0 + `stryker4s.conf` (0.15.1 could not parse Scala 3.8 indentation; 0.21.0 fixes it). Ring 5 runs per spec with a retargeted mutate list (100% on specs 1–2) |
+| WartRemover compatibility with Scala 3.8.4 (was: no `wartremover_3.8.4` build) | **RESOLVED** — `sbt-wartremover` 3.5.8 is on Maven Central and works on 3.8.4; added to `project/plugins.sbt` and wired in `build.sbt` as `Warts.unsafe` minus `TripleQuestionMark` (ThisBuild compile errors; the `verified` module is exempt). Ring 1 now enforces the partial-extraction warts (`OptionPartial`/`EitherProjectionPartial`/`TryPartial`) directly, not just via Ring 8 review |
 | smithy4s `Service` introspection API churn (0.18.x) | Derivation kept in an isolated module; pinned version; compile-time-only dependency surface |
 | Dependency creep in core (circe, hedgehog-core at Compile scope) | Deliberate, documented in design.md: accordant4s is itself a testing library, so Hedgehog `Gen` for mocks and circe for persistence are legitimate core dependencies |
