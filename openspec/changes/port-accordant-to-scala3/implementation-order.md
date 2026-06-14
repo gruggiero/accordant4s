@@ -85,7 +85,7 @@ concept delta + inventory update → checkpoint → WAIT for human approval.
 
 - [x] 1. `specs/oracle-core/spec.md` — pure oracle kernel: Outcome ADT, StateProfile, Verdict, Spec.allows (+ multi-module build restructure)
 - [x] 2. `specs/input-sets/spec.md` — labeled OperationCalls, InputSet composition, Gen-backed sources
-- [ ] 3. `specs/state-graph/spec.md` — bounded BFS exploration of reachable states with mocked responses
+- [x] 3. `specs/state-graph/spec.md` — bounded BFS exploration of reachable states with mocked responses
 - [ ] 4. `specs/test-generation/spec.md` — state/transition coverage + random walk, circe persistence
 - [ ] 5. `specs/test-execution/spec.md` — SystemUnderTest, step-wise oracle replay, hooks, munit module
 - [ ] 6. `specs/http-binding/spec.md` — http4s Client binding, transport outcomes as data (http4s module)

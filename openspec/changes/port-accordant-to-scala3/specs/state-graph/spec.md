@@ -21,7 +21,7 @@ by `MaxDepth`.
 
 | Concept | Kind | Description |
 |---------|------|-------------|
-| `MaxDepth` | opaque type (`Int :| Positive`) | Mandatory exploration bound |
+| `MaxDepth` | opaque type (`Int :\| Positive`) | Mandatory exploration bound |
 | `Node[S]` | case class | Canonical state + BFS depth |
 | `Edge[S]` | case class | `(from: S, call: OperationCall[S], to: S)` — `from == to` is a self-loop |
 | `StateGraph[S]` | case class | `initial: S`, `nodes: Vector[Node[S]]`, `edges: Vector[Edge[S]]` |
@@ -35,7 +35,9 @@ by `MaxDepth`.
 `GraphExplorer.explore` SHALL apply every call in the input set to every frontier state, record each distinct resulting state as a depth-tagged node and each `(state, call, next-state)` transition as an edge, and MUST stop expanding at `MaxDepth`.
 
 **Given** a spec, an input set, an initial state, a `MaxDepth`, and a mock seed
+
 **When** `GraphExplorer.explore` runs
+
 **Then** it applies every call in the input set to every frontier state (sampling the operation's `mock` for response-dependent transitions), records each distinct resulting state as a node with its BFS depth, records an edge per (state, call, next-state), and stops expanding at `MaxDepth`
 
 **Rationale**: This is Accordant's `TestCaseGenerator` exploration phase with `MaxDepth` safety bound; purity + seeded mocks make it reproducible.
@@ -209,6 +211,25 @@ property("stream/explore agreement") {
 | Stream facade ≡ strict explore, lazy | Req: streaming / Scenario: early termination + Property: agreement | scenario + property test | "stream/explore agreement" |
 | Every recorded edge is oracle-conformant | Property: edge conformance | property test + adversarial review (Ring 8 checks no edge is recorded on a failed branch) | "every edge spec-conformant" |
 
+## Requirement ↔ Test Cross-Reference
+
+Implemented and verified (`StateGraphProperties`, `GraphFixtures`, `StateGraphTypeContract`):
+
+| Spec heading | Test | Status |
+|---|---|---|
+| Req: Bounded BFS / Scenario: bank graph | `bank graph — expected states present` | ✅ |
+| Scenario: no-change ops are self-loops | `self-loop — withdraw on empty does not add a node` | ✅ |
+| Scenario: depth bound respected | `depth bound — no node deeper than MaxDepth, terminates` | ✅ |
+| Scenario: OneOf branches all explored | `OneOf — both branch states become nodes` | ✅ |
+| Req: Canonicalization / Scenario: diamond collapse | `diamond — Eq-equal target is one node with multiple inbound edges` | ✅ |
+| Req: Streaming facade / Scenario: early termination | `stream — take(5) yields exactly the first 5 BFS nodes` | ✅ |
+| Property: Every edge is spec-conformant | `every edge is oracle-conformant` | ✅ |
+| Property: Depth bound and reachability | `depth bound and reachability` | ✅ |
+| Property: Determinism | `determinism` | ✅ |
+| Property: No duplicate nodes | `no duplicate nodes` | ✅ |
+| Property: Stream/explore agreement | `stream/explore agreement` | ✅ |
+| Compile-Negative: non-positive `MaxDepth` | `CN — non-positive MaxDepth literals rejected` | ✅ |
+
 ## Verification Rings
 
-Ring 0 ✅ · Ring 1 ✅ · Ring 2 ✅ · Ring 3 ✅ · Ring 4 — · Ring 5 ✅ (90–95%) · Ring 6 — (mock sampling excludes PureScala) · Ring 7 — · Ring 8 ✅ · Ring 9 —
+Ring 0 ✅ · Ring 1 ✅ · Ring 2 ✅ · Ring 3 ✅ · Ring 4 — · Ring 5 ✅ (90.48%; 2 equivalent depth-guard mutants `>=`/`==`) · Ring 6 — (mock sampling excludes PureScala) · Ring 7 — · Ring 8 ✅ (3 PASS) · Ring 9 —

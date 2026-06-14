@@ -60,8 +60,8 @@ lazy val core = (project in file("core"))
 lazy val verified = (project in file("verified"))
   .enablePlugins(StainlessPlugin)
   .settings(
-    name              := "accordant4s-verified",
-    scalaVersion      := "3.7.2",
+    name         := "accordant4s-verified",
+    scalaVersion := "3.7.2",
     // Stainless injects its library sources into this module's compile; they emit
     // pattern-match-exhaustivity warnings we don't own (and can't fix). Silence
     // warnings from that source path only — our model (`OracleKernel.scala`) keeps

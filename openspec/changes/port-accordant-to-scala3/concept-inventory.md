@@ -23,6 +23,7 @@
 | `OperationName` | `String` | `Not[Blank]` (via `RefinedType`) | `io.gruggiero.accordant4s.domain` | oracle-core |
 | `CallLabel` | `String` | `Not[Blank]` (via `RefinedType`) | `io.gruggiero.accordant4s.domain` | oracle-core |
 | `StateProfile[S]` | `NonEmptyList[S]` | non-empty + `Eq`-dedup (smart ctors `one`/`of`; no public ctor from a possibly-empty collection) | `io.gruggiero.accordant4s.domain` | oracle-core |
+| `MaxDepth` | `Int` | `Positive` (via `RefinedType`) — mandatory exploration bound | `io.gruggiero.accordant4s.domain` | state-graph |
 
 ## Sealed Traits and Enums
 
@@ -39,6 +40,9 @@
 |------|--------|---------|---------------|
 | `Operation[Req, Res, S]` | `name: OperationName`, `behaviour: (Req,S)=>Outcome[Res,S]`, `mock: (Req,S)=>hedgehog.Gen[Res]` | `io.gruggiero.accordant4s.spec` | oracle-core |
 | `InputSet[S]` | `calls: List[OperationCall[S]]` (private ctor; `labels`/`size`/`++`; companion `empty`, `of` → `Either[NonEmptyList[CallLabel], InputSet[S]]`, `fromGen(op, gen, n: Int, seed: Long)(using Show[R])`) | `io.gruggiero.accordant4s.spec` | input-sets |
+| `Node[S]` | `state: S`, `depth: Int` (canonical state + BFS depth) | `io.gruggiero.accordant4s.engine` | state-graph |
+| `Edge[S]` | `from: S`, `call: OperationCall[S]`, `to: S` (`from == to` ⇒ self-loop) | `io.gruggiero.accordant4s.engine` | state-graph |
+| `StateGraph[S]` | `initial: S`, `nodes: Vector[Node[S]]`, `edges: Vector[Edge[S]]` | `io.gruggiero.accordant4s.engine` | state-graph |
 | `Spec[S]` | `operations: Map[OperationName, Operation[?,?,S]]` (+ `register`, `allows`; `Spec.empty`) | `io.gruggiero.accordant4s.spec` | oracle-core |
 | `OutcomeEval.Branch[Res, S]` | `check: ResponseCheck[Res]`, `transition: (Res,S)=>S` (`matches`/`next`) | `io.gruggiero.accordant4s.domain` | oracle-core |
 | `BankState` *(test fixture)* | `accounts: Map[String, BigDecimal]` (+ `Eq`/`Hash`/`Show`) | `io.gruggiero.accordant4s.fixtures` (test sources) | oracle-core |
@@ -58,6 +62,7 @@
 | `ProfileEval` | pure object | `allows(name, behaviour, res, profile)` | `io.gruggiero.accordant4s.domain` | oracle-core |
 | `expect` | DSL object | `apply(check)`, `Builder.sameState/.thenState`, `oneOf` | `io.gruggiero.accordant4s.spec` | oracle-core |
 | `withInput` | extension method | `Operation[R,Re,S].withInput(req: R, label: CallLabel): OperationCall.Aux[S,R,Re]` (Accordant's `op.With`) | `io.gruggiero.accordant4s.spec` | input-sets |
+| `GraphExplorer` | pure object | `explore(spec, inputs, initial, depth: MaxDepth, seed): StateGraph[S]`, `stream(...): fs2.Stream[Pure, Node[S]]`, `sampledResponse(call, from, seed): Option[call.Res]` (BFS over `spec.allows`; deterministic seed-keyed mock sampling) | `io.gruggiero.accordant4s.engine` | state-graph |
 
 ## Smithy Models
 
@@ -70,6 +75,7 @@
 |-----------|------|----------|---------------|
 | `genOperationCall` | `Gen[OperationCall[BankState]]` | `core` test: `fixtures/InputFixtures.scala` (with `deposit` fixture, `DepositRequest`/`DepositResponse` + `Show`) | input-sets |
 | `genInputSet` | `String => Gen[InputSet[BankState]]` (prefix-namespaced labels → label-disjoint by construction) | `core` test: `fixtures/InputFixtures.scala` | input-sets |
+| `genStateGraph` | `Gen[StateGraph[BankState]]` (via shared `genSmallSpecAndInputs`: `bankSpec` of create/deposit/withdraw/fork) | `core` test: `fixtures/GraphFixtures.scala` | state-graph |
 
 ## Cats Effect Resources and Middleware
 
