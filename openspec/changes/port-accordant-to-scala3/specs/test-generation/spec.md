@@ -191,6 +191,21 @@ its constraints (schema `version` check) are explicit runtime checks
 | Unknown schema version → `VersionMismatch`, malformed JSON → `DecodeFailed`, never an exception | Scenario: version mismatch | scenario test + static rule (no-throw) | "version mismatch" |
 | Baseline fixtures exist for future compatibility checks | Ring 4 | compatibility fixtures created in this spec (first persisted format — establishes the Ring 4 baseline) | `core/src/test/resources/fixtures/testcase-v1.json` |
 
+## Requirement ↔ Test Cross-Reference
+
+| Requirement / Scenario | Test (`TestGenerationProperties`) | Status |
+|---|---|---|
+| Paths are graph-valid / Happy path | "StateCoverage cases are edge-connected paths from initial" + "path validity for all algorithms" | ✅ |
+| Unreachable target impossible by construction | "no generated step references a call absent from the graph" + Ring 8 direct-construction probe | ✅ |
+| Coverage: StateCoverage covers nodes / TransitionCoverage covers edges | "StateCoverage covers all nodes / TransitionCoverage covers all edges" | ✅ |
+| Transition coverage hits error self-loop | "TransitionCoverage exercises the not-found self-loop" | ✅ |
+| Minimality preference (extend, not one-per-node) | "StateCoverage case count is at most the node count" + "StateCoverage on a linear chain emits one extended path covering all nodes" | ✅ |
+| Random walk determinism / exact count | "RandomWalk twice yields identical output" + "RandomWalk is a pure function of (graph, seed, count)" | ✅ |
+| RandomWalk walks the graph (bounded, non-empty) | "RandomWalk yields non-empty walks bounded by the node count" | ✅ |
+| Persistence roundtrip | "a generated bank test case round-trips through JSON" + "persistence roundtrip" | ✅ |
+| Version mismatch → `VersionMismatch`, malformed → `DecodeFailed`, never throws | "unknown version → VersionMismatch; malformed JSON → DecodeFailed" | ✅ |
+| Ring 4 baseline fixture decodes | "Ring 4 baseline — committed testcase-v1.json decodes to the baseline case" | ✅ |
+
 ## Verification Rings
 
 Ring 0 ✅ · Ring 1 ✅ · Ring 2 ✅ · Ring 3 ✅ · Ring 4 ✅ (first persisted format — fixtures created as baseline) · Ring 5 ✅ (90–95%) · Ring 6 — · Ring 7 — · Ring 8 ✅ · Ring 9 —

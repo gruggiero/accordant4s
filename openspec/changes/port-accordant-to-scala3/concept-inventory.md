@@ -33,6 +33,8 @@
 | `Outcome[Res, S]` | `enum derives CanEqual` | `Same(check)`, `Next(check, transition)`, `OneOf(branches)` | `io.gruggiero.accordant4s.domain` | oracle-core |
 | `Verdict[S]` | `enum derives CanEqual` | `Conformant(StateProfile[S])`, `Deviant(NonEmptyList[SpecViolation])` | `io.gruggiero.accordant4s.domain` | oracle-core |
 | `OperationCall[S]` | `sealed trait` (existential `type Req`/`type Res` members; `op`/`req`/`label`; companion `Aux[S,R,Re]` refinement, `apply`, `given canEqual`; private `Impl` case class) | `io.gruggiero.accordant4s.spec` | input-sets |
+| `CoverageAlgorithm` | `enum derives CanEqual` | `StateCoverage`, `TransitionCoverage`, `RandomWalk(seed: Long, count: Int :| Positive)` | `io.gruggiero.accordant4s.domain` | test-generation |
+| `PersistenceError` | `enum derives CanEqual` | `DecodeFailed(io.circe.Error)`, `VersionMismatch(found: Int, expected: Int)` | `io.gruggiero.accordant4s.persist` | test-generation |
 
 ## Case Classes (Domain Value Objects)
 
@@ -46,6 +48,8 @@
 | `Spec[S]` | `operations: Map[OperationName, Operation[?,?,S]]` (+ `register`, `allows`; `Spec.empty`) | `io.gruggiero.accordant4s.spec` | oracle-core |
 | `OutcomeEval.Branch[Res, S]` | `check: ResponseCheck[Res]`, `transition: (Res,S)=>S` (`matches`/`next`) | `io.gruggiero.accordant4s.domain` | oracle-core |
 | `BankState` *(test fixture)* | `accounts: Map[String, BigDecimal]` (+ `Eq`/`Hash`/`Show`) | `io.gruggiero.accordant4s.fixtures` (test sources) | oracle-core |
+| `TestCase[S]` | `name: CallLabel`, `initial: S`, `steps: List[OperationCall[S]]` | `io.gruggiero.accordant4s.spec` | test-generation |
+| `TestCaseFileRecord[S]` | `schemaVersion: Int`, `specName: String`, `testCase: TestCase[S]` (versioned persistence envelope) | `io.gruggiero.accordant4s.persist` | test-generation |
 
 ## Service Traits
 
@@ -63,6 +67,8 @@
 | `expect` | DSL object | `apply(check)`, `Builder.sameState/.thenState`, `oneOf` | `io.gruggiero.accordant4s.spec` | oracle-core |
 | `withInput` | extension method | `Operation[R,Re,S].withInput(req: R, label: CallLabel): OperationCall.Aux[S,R,Re]` (Accordant's `op.With`) | `io.gruggiero.accordant4s.spec` | input-sets |
 | `GraphExplorer` | pure object | `explore(spec, inputs, initial, depth: MaxDepth, seed): StateGraph[S]`, `stream(...): fs2.Stream[Pure, Node[S]]`, `sampledResponse(call, from, seed): Option[call.Res]` (BFS over `spec.allows`; deterministic seed-keyed mock sampling) | `io.gruggiero.accordant4s.engine` | state-graph |
+| `TestCaseGenerator` | pure object | `generate[S](graph: StateGraph[S], algorithm: CoverageAlgorithm)(using StateOps[S]): Vector[TestCase[S]]` (StateCoverage greedy path-extension / TransitionCoverage per-edge / deterministic splitmix64 RandomWalk; paths drawn only from `graph.edges`) | `io.gruggiero.accordant4s.engine` | test-generation |
+| `TestCasePersistence` | pure object (`persist`) | `schemaVersion: Int`, `given callLabelCodec: Codec[CallLabel]`, `given testCaseCodec[S](using Codec[S], Codec[OperationCall[S]]): Codec[TestCase[S]]`, `toJson[S](tc)(using Encoder[TestCase[S]]): Json`, `fromJson[S](json)(using Decoder[TestCase[S]]): Either[PersistenceError, TestCase[S]]` (versioned envelope; version-gate before decode; never throws) | `io.gruggiero.accordant4s.persist` | test-generation |
 
 ## Smithy Models
 
@@ -76,6 +82,8 @@
 | `genOperationCall` | `Gen[OperationCall[BankState]]` | `core` test: `fixtures/InputFixtures.scala` (with `deposit` fixture, `DepositRequest`/`DepositResponse` + `Show`) | input-sets |
 | `genInputSet` | `String => Gen[InputSet[BankState]]` (prefix-namespaced labels → label-disjoint by construction) | `core` test: `fixtures/InputFixtures.scala` | input-sets |
 | `genStateGraph` | `Gen[StateGraph[BankState]]` (via shared `genSmallSpecAndInputs`: `bankSpec` of create/deposit/withdraw/fork) | `core` test: `fixtures/GraphFixtures.scala` | state-graph |
+| `genTestCase` | `Gen[TestCase[BankState]]` (StateCoverage over `genStateGraph`) | `core` test: `fixtures/PersistenceFixtures.scala` | test-generation |
+| `genAlgorithm` | `Gen[CoverageAlgorithm]` (`Gen.choice1` of StateCoverage / TransitionCoverage / seeded RandomWalk); plus `genSeed`, `genPosSmall` | `core` test: `fixtures/PersistenceFixtures.scala` | test-generation |
 
 ## Cats Effect Resources and Middleware
 

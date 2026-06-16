@@ -107,7 +107,7 @@ enforced by the build graph rather than by Scalafix.
 | `spec` (service) | fs2, cats-effect, http4s, smithy4s | `domain`, cats core, Iron, hedgehog `Gen` |
 | `engine` (effectful) | http4s, smithy4s | `domain`, `spec`, cats-effect, fs2 |
 | `engine.verified` (pure, Ring 6) | fs2, cats-effect, hedgehog, anything effectful | `domain`, scala stdlib, cats core (PureScala subset only) |
-| `persist` | fs2, cats-effect, http4s, smithy4s | `domain`, circe |
+| `persist` | fs2, cats-effect, http4s, smithy4s | `domain`, `spec`, circe |
 | `munit` / `http` / `smithy` (integration modules) | each other | all `core` packages + their own integration lib (munit / http4s / smithy4s) |
 
 ## Ring Availability Summary

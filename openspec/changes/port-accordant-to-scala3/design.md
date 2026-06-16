@@ -57,7 +57,7 @@ written explicitly.
 | Domain | `io.gruggiero.accordant4s.domain` | Nothing (cats/iron data types only) | no outbound project imports |
 | Spec (service) | `io.gruggiero.accordant4s.spec` | Domain | `allowed: { from: spec, to: [domain] }` |
 | Engine | `io.gruggiero.accordant4s.engine` | Domain, Spec | `allowed: { from: engine, to: [domain, spec] }` |
-| Persistence | `io.gruggiero.accordant4s.persist` | Domain | `allowed: { from: persist, to: [domain] }` |
+| Persistence | `io.gruggiero.accordant4s.persist` | Domain, Spec | `allowed: { from: persist, to: [domain, spec] }` (serialises `TestCase`s carrying `spec.OperationCall`; still no fs2/cats-effect/http/smithy) |
 | Integrations | `…accordant4s.munit` / `…http` / `…smithy` | all of the above | separate sbt modules (enforced by build, not Scalafix) |
 
 ### New Packages

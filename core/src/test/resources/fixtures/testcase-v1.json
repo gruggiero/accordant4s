@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "specName": "accordant4s",
+  "testCase": {
+    "name": "baseline",
+    "initial": {
+      "accounts": {}
+    },
+    "steps": [
+      {
+        "op": "Create",
+        "label": "c",
+        "request": {
+          "id": "alice"
+        }
+      },
+      {
+        "op": "Deposit",
+        "label": "d",
+        "request": {
+          "accountId": "alice",
+          "amount": 50
+        }
+      }
+    ]
+  }
+}
