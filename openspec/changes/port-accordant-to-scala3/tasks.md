@@ -43,11 +43,11 @@ R3 (property tests) and R8 (adversarial review) are mandatory for every spec.
 
 ## 5. test-execution (SystemUnderTest, step-wise replay, hooks, munit module)
 
-- [ ] Step 1 — typed contract: `SystemUnderTest`, `ExecutionHooks`, `ExecutionReport`, `TestCaseExecutor`, `RefSut`, `AccordantSuite` (human gate)
-- [ ] Step 2 — test oracle: scenarios + 4 properties + compile-negative stub (human gate)
-- [ ] Step 3 — implementation (new `accordant4s-munit` module)
-- [ ] Rings: R0 R1 R2 R3 R8
-- [ ] Concept-delta check + inventory update + checkpoint
+- [x] Step 1 — typed contract: `SystemUnderTest`, `ExecutionHooks`, `ExecutionReport`, `TestCaseExecutor`, `RefSut`, `AccordantSuite` (human gate)
+- [x] Step 2 — test oracle: scenarios + 4 properties + compile-negative stub (human gate)
+- [x] Step 3 — implementation (new `accordant4s-munit` module)
+- [x] Rings: R0 R1 R2 R3 R8
+- [x] Concept-delta check + inventory update + checkpoint
 
 ## 6. http-binding (http4s Client binding, transport outcomes as data)
 

@@ -35,6 +35,7 @@
 | `OperationCall[S]` | `sealed trait` (existential `type Req`/`type Res` members; `op`/`req`/`label`; companion `Aux[S,R,Re]` refinement, `apply`, `given canEqual`; private `Impl` case class) | `io.gruggiero.accordant4s.spec` | input-sets |
 | `CoverageAlgorithm` | `enum derives CanEqual` | `StateCoverage`, `TransitionCoverage`, `RandomWalk(seed: Long, count: Int :| Positive)` | `io.gruggiero.accordant4s.domain` | test-generation |
 | `PersistenceError` | `enum derives CanEqual` | `DecodeFailed(io.circe.Error)`, `VersionMismatch(found: Int, expected: Int)` | `io.gruggiero.accordant4s.persist` | test-generation |
+| `ExecutionReport[S]` | `enum derives CanEqual` | `Passed(stepsRun: Int)`, `DeviatesAt(stepIndex: Int, violations: NonEmptyList[SpecViolation], reproPath: TestCase[S])` (+ `isPassed`) | `io.gruggiero.accordant4s.engine` | test-execution |
 
 ## Case Classes (Domain Value Objects)
 
@@ -48,14 +49,17 @@
 | `Spec[S]` | `operations: Map[OperationName, Operation[?,?,S]]` (+ `register`, `allows`; `Spec.empty`) | `io.gruggiero.accordant4s.spec` | oracle-core |
 | `OutcomeEval.Branch[Res, S]` | `check: ResponseCheck[Res]`, `transition: (Res,S)=>S` (`matches`/`next`) | `io.gruggiero.accordant4s.domain` | oracle-core |
 | `BankState` *(test fixture)* | `accounts: Map[String, BigDecimal]` (+ `Eq`/`Hash`/`Show`) | `io.gruggiero.accordant4s.fixtures` (test sources) | oracle-core |
+| `RefSut[S]` *(test fixture)* | in-memory `SystemUnderTest[IO, S]` whose responses come from each call's own `mock` and whose state advances through `behaviour`; `apply[S](initial, seed)(using StateOps[S]): IO[RefSut[S]]`; conformant by construction; fault-injection via a typed faulty operation (`faultyWithdraw`) | `io.gruggiero.accordant4s.fixtures.ExecutionFixtures` (test sources) | test-execution |
 | `TestCase[S]` | `name: CallLabel`, `initial: S`, `steps: List[OperationCall[S]]` | `io.gruggiero.accordant4s.spec` | test-generation |
 | `TestCaseFileRecord[S]` | `schemaVersion: Int`, `specName: String`, `testCase: TestCase[S]` (versioned persistence envelope) | `io.gruggiero.accordant4s.persist` | test-generation |
+| `ExecutionHooks[F[_]]` | `beforeEach: F[Unit]`, `afterEach: F[Unit]` (plain record; bracket semantics are the executor's obligation; companion `noop[F]` default) | `io.gruggiero.accordant4s.engine` | test-execution |
 
 ## Service Traits
 
 | Trait | Type Param | Methods | Package | Introduced By |
 |-------|-----------|---------|---------|---------------|
 | `StateOps[S]` | `S` | `eqS`, `hashS`, `showS`, `canEqualS` (given `StateOps.derived`) | `io.gruggiero.accordant4s.domain` | oracle-core |
+| `SystemUnderTest[F[_], S]` | `F[_]`, `S` | `execute(call: OperationCall[S]): F[call.Res]` (DEPENDENT result type — the answer is tied to the call's operation, no cast), `reset: F[Unit]` | `io.gruggiero.accordant4s.engine` | test-execution |
 
 ## Type Aliases & Pure Objects
 
@@ -69,6 +73,7 @@
 | `GraphExplorer` | pure object | `explore(spec, inputs, initial, depth: MaxDepth, seed): StateGraph[S]`, `stream(...): fs2.Stream[Pure, Node[S]]`, `sampledResponse(call, from, seed): Option[call.Res]` (BFS over `spec.allows`; deterministic seed-keyed mock sampling) | `io.gruggiero.accordant4s.engine` | state-graph |
 | `TestCaseGenerator` | pure object | `generate[S](graph: StateGraph[S], algorithm: CoverageAlgorithm)(using StateOps[S]): Vector[TestCase[S]]` (StateCoverage greedy path-extension / TransitionCoverage per-edge / deterministic splitmix64 RandomWalk; paths drawn only from `graph.edges`) | `io.gruggiero.accordant4s.engine` | test-generation |
 | `TestCasePersistence` | pure object (`persist`) | `schemaVersion: Int`, `given callLabelCodec: Codec[CallLabel]`, `given testCaseCodec[S](using Codec[S], Codec[OperationCall[S]]): Codec[TestCase[S]]`, `toJson[S](tc)(using Encoder[TestCase[S]]): Json`, `fromJson[S](json)(using Decoder[TestCase[S]]): Either[PersistenceError, TestCase[S]]` (versioned envelope; version-gate before decode; never throws) | `io.gruggiero.accordant4s.persist` | test-generation |
+| `TestCaseExecutor` | pure object (`engine`) | `run[F[_], S](spec, testCase, sut, hooks)(using Async[F], StateOps[S]): F[ExecutionReport[S]]` (step-wise oracle replay; per step executes the call, validates the ACTUAL response via `spec.allows`, threads the surviving profile, halts at the first `Deviant`; `bracket` runs `sut.reset`+`beforeEach` before step 1 and `afterEach` ALWAYS incl. error/cancellation; errors re-raised, never converted to verdicts) | `io.gruggiero.accordant4s.engine` | test-execution |
 
 ## Smithy Models
 
@@ -84,6 +89,15 @@
 | `genStateGraph` | `Gen[StateGraph[BankState]]` (via shared `genSmallSpecAndInputs`: `bankSpec` of create/deposit/withdraw/fork) | `core` test: `fixtures/GraphFixtures.scala` | state-graph |
 | `genTestCase` | `Gen[TestCase[BankState]]` (StateCoverage over `genStateGraph`) | `core` test: `fixtures/PersistenceFixtures.scala` | test-generation |
 | `genAlgorithm` | `Gen[CoverageAlgorithm]` (`Gen.choice1` of StateCoverage / TransitionCoverage / seeded RandomWalk); plus `genSeed`, `genPosSmall` | `core` test: `fixtures/PersistenceFixtures.scala` | test-generation |
+| `genFaultyWithdrawCase` | `Gen[TestCase[BankState]]` (conformant prefix + faulty final `withdraw`; deviates at its own step) | `core` test: `fixtures/ExecutionFixtures.scala` | test-execution |
+| `genSpecInputsDepthAlgo` | `Gen[(Spec, List[OperationCall], BankState, MaxDepth, Long, CoverageAlgorithm)]` (soundness property's input space) | `core` test: `fixtures/ExecutionFixtures.scala` | test-execution |
+| `genSutMode` | `Gen[SutMode]` (`Passing`/`Deviating`/`Raising` — every terminal mode constructed explicitly) | `core` test: `fixtures/ExecutionFixtures.scala` | test-execution |
+
+## Integrations (separate sbt modules)
+
+| Concept | Kind | Module | Members | Introduced By |
+|---------|------|--------|---------|---------------|
+| `AccordantSuite[S]` | abstract class (`munit.CatsEffectSuite`) | `accordant4s-munit` (`io.gruggiero.accordant4s.munit`) | abstract `spec`/`generatedCases`/`sutResource` + `hooks` default; registers one `test(tc.name)` per generated case (fails on `DeviatesAt`); `failureMessage(DeviatesAt)` carries step index, violations, and persisted repro-path JSON | test-execution |
 
 ## Cats Effect Resources and Middleware
 

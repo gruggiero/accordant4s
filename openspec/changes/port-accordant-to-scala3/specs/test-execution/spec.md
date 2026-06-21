@@ -12,7 +12,7 @@ and a munit integration module that turns generated cases into test suite entrie
 | `Spec[S]` / `allows` | case class / method | `spec` (introduced by spec:oracle-core) |
 | `Verdict[S]` / `StateProfile[S]` / `SpecViolation` | enum / opaque / enum | `domain` (introduced by spec:oracle-core) |
 | `OperationCall[S]` | sealed trait | `spec` (introduced by spec:input-sets) |
-| `TestCase[S]` | case class | `domain` (introduced by spec:test-generation) |
+| `TestCase[S]` | case class | `spec` (introduced by spec:test-generation) |
 | `TestCasePersistence` | object | `persist` (introduced by spec:test-generation) |
 | `genTestCase` | Hedgehog generator | test fixtures (introduced by spec:test-generation) |
 | `BankState` fixture | test case class | test fixtures (introduced by spec:oracle-core) |
@@ -21,12 +21,12 @@ and a munit integration module that turns generated cases into test suite entrie
 
 | Concept | Kind | Description |
 |---------|------|-------------|
-| `SystemUnderTest[F[_]]` | trait (tagless final, `F: Async`) | `execute(call: OperationCall[S]): F[call.Res]`, `reset: F[Unit]` |
-| `ExecutionHooks[F]` | case class | `beforeEach: F[Unit]`, `afterEach: F[Unit]` (defaults no-op) |
-| `ExecutionReport[S]` | enum | `Passed(stepsRun)` \| `DeviatesAt(stepIndex, violations, reproPath: TestCase[S])` |
-| `TestCaseExecutor` | object | `run[F, S](spec, testCase, sut, hooks): F[ExecutionReport[S]]` |
-| `RefSut` | test fixture | In-memory `SystemUnderTest[IO]` driven by the spec itself (conformant by construction) + fault-injection wrapper |
-| `AccordantSuite` | abstract class (`accordant4s-munit`) | munit-cats-effect suite emitting one test per generated `TestCase` |
+| `SystemUnderTest[F[_], S]` | trait (tagless final, `F: Async`) | `execute(call: OperationCall[S]): F[call.Res]` (DEPENDENT result type — the answer is tied to the call's operation), `reset: F[Unit]`. `S` is needed because `execute` references both the call's `Res` and `S` |
+| `ExecutionHooks[F]` | case class | `beforeEach: F[Unit]`, `afterEach: F[Unit]`; companion `noop[F]` factory for no-op defaults |
+| `ExecutionReport[S]` | enum (in `engine`, not `domain` — `DeviatesAt` carries `TestCase[S]` which carries `spec.OperationCall[S]`, so `domain` must not own it) | `Passed(stepsRun)` \| `DeviatesAt(stepIndex, violations, reproPath: TestCase[S])`; `isPassed: Boolean` accessor |
+| `TestCaseExecutor` | object | `run[F[_], S](spec, testCase, sut, hooks)(using Async[F], StateOps[S]): F[ExecutionReport[S]]` |
+| `RefSut` | test fixture | In-memory `SystemUnderTest[IO, S]` driven by the spec itself (conformant by construction); `apply[S](initial, seed)(using StateOps[S]): IO[RefSut[S]]` |
+| `AccordantSuite[S]` | abstract class (`accordant4s-munit`, extends `munit.CatsEffectSuite`) | abstract `spec: Spec[S]`, `generatedCases: Vector[TestCase[S]]`, `sutResource: Resource[IO, SystemUnderTest[IO, S]]`, `hooks: ExecutionHooks[IO]` (default no-op); registers one munit test per generated case and fails it on `DeviatesAt`; `failureMessage(DeviatesAt[S])` carries step index, violations, and persisted repro-path JSON |
 
 ## ADDED Requirements
 
@@ -34,7 +34,7 @@ and a munit integration module that turns generated cases into test suite entrie
 
 The executor SHALL, for each step in order, execute the call against the SUT, validate the ACTUAL response via `spec.allows` against the current profile, thread the surviving profile to the next step, and MUST stop at the first `Deviant` verdict.
 
-**Given** a spec, a test case, and a `SystemUnderTest[F]`
+**Given** a spec, a test case, and a `SystemUnderTest[F, S]`
 **When** the executor runs
 **Then** for each step in order it executes the call against the SUT, feeds the ACTUAL response to `spec.allows` with the current profile, threads the surviving profile to the next step, and stops at the first `Deviant` verdict
 
@@ -84,7 +84,7 @@ The executor SHALL, for each step in order, execute the call against the SUT, va
 
 Each generated `TestCase` SHALL appear as exactly one named munit test, and a `DeviatesAt` report MUST fail its test with a message carrying the step index, the violations, and the reproducing-path JSON.
 
-**Given** an `AccordantSuite` configured with a spec, input set, exploration depth, algorithm, and a SUT `Resource`
+**Given** an `AccordantSuite[S]` subclass providing a `spec`, the `generatedCases` (a `Vector[TestCase[S]]`, e.g. from `GraphExplorer.explore` + `TestCaseGenerator.generate`), and a `sutResource: Resource[IO, SystemUnderTest[IO, S]]`
 **When** munit collects the suite
 **Then** each generated `TestCase` appears as one named munit test (name = test-case label); a `DeviatesAt` report fails the test with a message containing the step index, the violations, and the reproducing path JSON
 
@@ -106,38 +106,41 @@ Each generated `TestCase` SHALL appear as exactly one named munit test, and a `D
 
 ### Property: Reference implementation conformance (soundness)
 
-**Generator strategy**: composite constructive `genSpecInputsDepthAlgo` reusing spec:state-graph's spec/input pool plus `genAlgorithm`; the SUT is `RefSut(spec)` — deterministic, derived from the spec itself
+**Generator strategy**: composite constructive `genSpecInputsDepthAlgo` reusing spec:state-graph's spec/input pool plus `genAlgorithm`; the SUT is `RefSut(initial, seed)` — deterministic, derived from the spec itself (a fresh SUT per run; the executor resets it before step 1)
 
 **Invariant**: A SUT that implements exactly the spec's transitions passes every generated test case, for all explored graphs and algorithms.
 
 ```
 property("reference implementation conformance") {
   for {
-    (spec, inputs, depth, algo) <- genSpecInputsDepthAlgo.forAll
+    (spec, inputs, initial, depth, seed, algo) <- genSpecInputsDepthAlgo.forAll
   } yield {
-    val cases = generate(explore(spec, inputs, init, depth, seed), algo)
-    val passed = cases.traverse(tc => TestCaseExecutor.run(spec, tc, RefSut(spec), noHooks))
+    val graph = explore(spec, inputSetOf(inputs), initial, depth, seed)
+    val cases = TestCaseGenerator.generate(graph, algo)
+    val sut   = RefSut(initial, seed).unsafeRunSync()
+    val passed = cases.traverse(tc => TestCaseExecutor.run(spec, tc, sut, noHooks))
                       .map(_.forall(_.isPassed))
                       .unsafeRunSync()
-    Result.assert(passed)
+    Result.assert(cases.isEmpty || passed)
   }
 }
 ```
 
 ### Property: Fault detection (completeness for injected faults)
 
-**Generator strategy** (Hedgehog): `genFault` — `Gen.choice1` over single-operation behavioural mutations (drop-check, wrong-transition, swallow-error) applied to `RefSut`; classify by fault kind
+**Generator strategy** (Hedgehog): `genFaultyWithdrawCase` — a `RefSut` fault encoded cast-free as a typed operation (`faultyWithdraw`) with a non-conformant `mock` (always answers `Success(-1)`) but the ORIGINAL conformant `behaviour`; the executor samples `call.op.mock` and validates via the original `behaviour`, deviating at its own step
 
-**Invariant**: For any single-operation fault injected into `RefSut`, executing a `TransitionCoverage` case set reports at least one `DeviatesAt`, and the reported step's call is the faulted operation.
+**Invariant**: For a faulty operation injected into `RefSut` via the test case, execution reports `DeviatesAt`, and the reported step's call is the faulted operation.
 
 ```
 property("fault detection") {
   for {
-    fault <- genFault.forAll
+    faultyCase <- genFaultyWithdrawCase.forAll
   } yield {
-    val reports = runAll(spec, transitionCases, RefSut(spec).withFault(fault))
-    Result.assert(reports.exists {
-      case DeviatesAt(_, _, path) => path.steps.last.op.name == fault.opName
+    val sut    = RefSut(faultyCase.initial, 0L).unsafeRunSync()
+    val report = TestCaseExecutor.run(bankSpec, faultyCase, sut, noHooks).unsafeRunSync()
+    Result.assert(report match {
+      case DeviatesAt(_, _, path) => path.steps.last.op.name == faultedOpName
       case _                      => false
     })
   }
@@ -146,34 +149,39 @@ property("fault detection") {
 
 ### Property: Deviation index is the first deviation
 
-**Generator strategy**: same `genFault`; the executed prefix is replayed through the pure oracle with the recorded responses
+**Generator strategy**: same `genFaultyWithdrawCase`; the constructed conformant prefix plus a faulty final step deviates exactly at the last step — all steps before the reported index are oracle-conformant
 
 **Invariant**: All steps before the reported index validate as `Conformant` when replayed through the oracle with the recorded responses.
 
 ```
 property("deviation index is the first deviation") {
   for {
-    fault <- genFault.forAll
-  } yield Result.assert(runAll(...).forall {
-    case DeviatesAt(n, _, path) => replayOracle(spec, path.steps.take(n)).isConformant
-    case Passed(_)              => true
-  })
+    faultyCase <- genFaultyWithdrawCase.forAll
+  } yield {
+    val sut    = RefSut(faultyCase.initial, 0L).unsafeRunSync()
+    val report = TestCaseExecutor.run(bankSpec, faultyCase, sut, noHooks).unsafeRunSync()
+    Result.assert(report match {
+      case DeviatesAt(n, _, _) => n == faultyCase.steps.length - 1  // faulty step is last
+      case Passed(_)           => false                            // a faulty case MUST deviate
+    })
+  }
 }
 ```
 
 ### Property: Hook invariant
 
-**Generator strategy** (Hedgehog): `genTestCase` (spec 4) × `genSutBehaviour` = `Gen.choice1(passing, deviating, raising)` — every terminal mode constructed explicitly, counters in `Ref[IO, Int]`
+**Generator strategy** (Hedgehog): `genTestCase` (spec 4) × `genSutMode` = `Gen.element1(Passing, Deviating, Raising)` — every terminal mode constructed explicitly, counters in `Ref[IO, (Int, Int)]`
 
 **Invariant**: For every execution — passing, deviating, or erroring — `#beforeEach == #afterEach == 1` per test case.
 
 ```
 property("hook invariant") {
   for {
-    tc        <- genTestCase.forAll
-    behaviour <- genSutBehaviour.forAll
+    tc   <- genTestCase.forAll
+    mode <- genSutMode.forAll
   } yield {
-    val (b, a) = countersAfter(TestCaseExecutor.run(spec, tc, behaviour.sut, countingHooks)).unsafeRunSync()
+    // run is `.attempt`ed so an erroring (Raising) SUT still observes the always-run afterEach
+    val (_, b, a) = runWithCountingHooksAttempted(spec, tc, mode).unsafeRunSync()
     Result.assert(b == 1 && a == 1)
   }
 }

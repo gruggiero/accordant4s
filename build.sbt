@@ -85,6 +85,10 @@ addCommandAlias("ring6", "; set verified / stainlessEnabled := true ; verified /
 
 lazy val munit = (project in file("munit"))
   .dependsOn(core)
+  // `test->test` so this module's meta-suite scenario tests can reuse `core`'s
+  // test fixtures (RefSut, bank spec/graph fixtures) — the same reuse spec 5's
+  // typed contract flagged as a Step-3 build change (commitment #4).
+  .dependsOn(core % "test->test")
   .settings(
     name := "accordant4s-munit",
     libraryDependencies ++= Seq(
