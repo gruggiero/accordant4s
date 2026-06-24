@@ -51,11 +51,11 @@ R3 (property tests) and R8 (adversarial review) are mandatory for every spec.
 
 ## 6. http-binding (http4s Client binding, transport outcomes as data)
 
-- [ ] Step 1 — typed contract: `HttpRoute`, `HttpResponseMapper`, `HttpBinding`, `Http4sSut`, `TransportOutcome`, `MaxRetryCount` (human gate)
-- [ ] Step 2 — test oracle: scenarios + 3 properties + compile-negative stub (human gate)
-- [ ] Step 3 — implementation (new `accordant4s-http4s` module)
-- [ ] Rings: R0 R1 R3 R4 (HTTP wire round-trip laws) R8
-- [ ] Concept-delta check + inventory update + checkpoint
+- [x] Step 1 — typed contract: `HttpRoute`, `HttpResponseMapper`, `HttpBinding`, `Http4sSut`, `TransportOutcome`, `MaxRetryCount` (human gate)
+- [x] Step 2 — test oracle: scenarios + 3 properties + compile-negative stub (human gate)
+- [x] Step 3 — implementation (new `accordant4s-http4s` module)
+- [x] Rings: R0 R1 R3 R4 (HTTP wire round-trip laws) R8
+- [x] Concept-delta check + inventory update + checkpoint
 
 ## 7. smithy4s-derivation (Operation slots + HTTP binding derived from Smithy IDL)
 

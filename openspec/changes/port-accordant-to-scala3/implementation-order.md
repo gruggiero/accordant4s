@@ -88,6 +88,6 @@ concept delta + inventory update → checkpoint → WAIT for human approval.
 - [x] 3. `specs/state-graph/spec.md` — bounded BFS exploration of reachable states with mocked responses
 - [x] 4. `specs/test-generation/spec.md` — state/transition coverage + random walk, circe persistence
 - [x] 5. `specs/test-execution/spec.md` — SystemUnderTest, step-wise oracle replay, hooks, munit module
-- [ ] 6. `specs/http-binding/spec.md` — http4s Client binding, transport outcomes as data (http4s module)
+- [x] 6. `specs/http-binding/spec.md` — http4s Client binding, transport outcomes as data (http4s module)
 - [ ] 7. `specs/smithy4s-derivation/spec.md` — Operation slots + HTTP binding derived from Smithy IDL (smithy4s module)
 - [ ] 8. `specs/linearizability/spec.md` — concurrent cases, parallel executor, permutation checker

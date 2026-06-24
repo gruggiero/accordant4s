@@ -24,6 +24,7 @@
 | `CallLabel` | `String` | `Not[Blank]` (via `RefinedType`) | `io.gruggiero.accordant4s.domain` | oracle-core |
 | `StateProfile[S]` | `NonEmptyList[S]` | non-empty + `Eq`-dedup (smart ctors `one`/`of`; no public ctor from a possibly-empty collection) | `io.gruggiero.accordant4s.domain` | oracle-core |
 | `MaxDepth` | `Int` | `Positive` (via `RefinedType`) — mandatory exploration bound | `io.gruggiero.accordant4s.domain` | state-graph |
+| `MaxRetryCount` | `Int` | `Positive` (via `RefinedType`) — bound on idempotent connection retries | `io.gruggiero.accordant4s.domain` | http-binding |
 
 ## Sealed Traits and Enums
 
@@ -36,6 +37,7 @@
 | `CoverageAlgorithm` | `enum derives CanEqual` | `StateCoverage`, `TransitionCoverage`, `RandomWalk(seed: Long, count: Int :| Positive)` | `io.gruggiero.accordant4s.domain` | test-generation |
 | `PersistenceError` | `enum derives CanEqual` | `DecodeFailed(io.circe.Error)`, `VersionMismatch(found: Int, expected: Int)` | `io.gruggiero.accordant4s.persist` | test-generation |
 | `ExecutionReport[S]` | `enum derives CanEqual` | `Passed(stepsRun: Int)`, `DeviatesAt(stepIndex: Int, violations: NonEmptyList[SpecViolation], reproPath: TestCase[S])` (+ `isPassed`) | `io.gruggiero.accordant4s.engine` | test-execution |
+| `TransportOutcome` | `enum derives CanEqual` | `Completed(status: org.http4s.Status, body: String)`, `TimedOut`, `ConnectionFailed(detail: String)` | `io.gruggiero.accordant4s.http` | http-binding |
 
 ## Case Classes (Domain Value Objects)
 
@@ -53,6 +55,8 @@
 | `TestCase[S]` | `name: CallLabel`, `initial: S`, `steps: List[OperationCall[S]]` | `io.gruggiero.accordant4s.spec` | test-generation |
 | `TestCaseFileRecord[S]` | `schemaVersion: Int`, `specName: String`, `testCase: TestCase[S]` (versioned persistence envelope) | `io.gruggiero.accordant4s.persist` | test-generation |
 | `ExecutionHooks[F[_]]` | `beforeEach: F[Unit]`, `afterEach: F[Unit]` (plain record; bracket semantics are the executor's obligation; companion `noop[F]` default) | `io.gruggiero.accordant4s.engine` | test-execution |
+| `HttpRoute[Req]` | `uri: Req => org.http4s.Uri`, `encode: Req => org.http4s.Request[IO]` (companion `jsonPost[Req](uri)(using EntityEncoder[IO, Req])`) | `io.gruggiero.accordant4s.http` | http-binding |
+| `HttpBinding[S]` | `endpoints: Map[OperationName, Endpoint[S]]` (`endpointFor(call)`; companion `empty`, `register(op, route, mapper): HttpBinding => HttpBinding`, `check(spec, binding): Either[Set[OperationName], HttpBinding]`); `Endpoint[S]` is a sealed trait (existential slot: `encode(call): IO[Request[IO]]`, `decode(outcome): IO[Any]`; built from `Operation[Req, Res, S]`) | `io.gruggiero.accordant4s.http` | http-binding |
 
 ## Service Traits
 
@@ -60,6 +64,7 @@
 |-------|-----------|---------|---------|---------------|
 | `StateOps[S]` | `S` | `eqS`, `hashS`, `showS`, `canEqualS` (given `StateOps.derived`) | `io.gruggiero.accordant4s.domain` | oracle-core |
 | `SystemUnderTest[F[_], S]` | `F[_]`, `S` | `execute(call: OperationCall[S]): F[call.Res]` (DEPENDENT result type — the answer is tied to the call's operation, no cast), `reset: F[Unit]` | `io.gruggiero.accordant4s.engine` | test-execution |
+| `HttpResponseMapper[Res]` | `Res` | `map(outcome: TransportOutcome): IO[Res]` (TOTAL over all statuses + transport failures; user supplies per-operation) | `io.gruggiero.accordant4s.http` | http-binding |
 
 ## Type Aliases & Pure Objects
 
@@ -98,6 +103,7 @@
 | Concept | Kind | Module | Members | Introduced By |
 |---------|------|--------|---------|---------------|
 | `AccordantSuite[S]` | abstract class (`munit.CatsEffectSuite`) | `accordant4s-munit` (`io.gruggiero.accordant4s.munit`) | abstract `spec`/`generatedCases`/`sutResource` + `hooks` default; registers one `test(tc.name)` per generated case (fails on `DeviatesAt`); `failureMessage(DeviatesAt)` carries step index, violations, and persisted repro-path JSON | test-execution |
+| `Http4sSut` | object (→ `SystemUnderTest[IO, S]`) | `accordant4s-http4s` (`io.gruggiero.accordant4s.http`) | `apply[S](client: Client[IO], binding: HttpBinding[S], timeout: FiniteDuration, retries: MaxRetryCount): SystemUnderTest[IO, S]`; encodes requests per route, sends through the client with timeout, decodes responses via the mapper; transport failures (timeout/connection) surface as `TransportOutcome` → `Res`, never raise | http-binding |
 
 ## Cats Effect Resources and Middleware
 

@@ -101,8 +101,16 @@ lazy val munit = (project in file("munit"))
 
 lazy val http4s = (project in file("http4s"))
   .dependsOn(core)
+  .dependsOn(core % "test->test")
   .settings(
     name := "accordant4s-http4s",
+    // The existential-Endpoint bridge (call.req / call.Res recovered from a
+    // name-keyed lookup) needs one controlled `asInstanceOf` and exposes `Any`
+    // at the erased boundary. Both are sound by the name-keyed invariant.
+    // Exempt those two warts from this module only (the `verified` module
+    // exempts all warts for the same kind of reason).
+    wartremoverErrors := Warts.unsafe
+      .filterNot(w => w == Wart.TripleQuestionMark || w == Wart.AsInstanceOf || w == Wart.Any),
     libraryDependencies ++= Seq(
       Http4sClient,
       Http4sCirce

@@ -59,7 +59,7 @@ abstract class AccordantSuite[S](using
     test(tc.name: String) {
       sutResource.use { sut =>
         TestCaseExecutor.run(spec, tc, sut, hooks).flatMap {
-          case ExecutionReport.Passed(_)               => IO.unit
+          case ExecutionReport.Passed(_) => IO.unit
           case dev @ ExecutionReport.DeviatesAt(_, _, _) =>
             IO.raiseError(failureException(dev))
         }
@@ -76,15 +76,20 @@ abstract class AccordantSuite[S](using
    * `TestCasePersistence.toJson` (spec:test-generation).
    */
   def failureMessage(report: ExecutionReport.DeviatesAt[S]): String =
-    val reproJson = TestCasePersistence.toJson[S](report.reproPath).noSpaces
+    val reproJson  = TestCasePersistence.toJson[S](report.reproPath).noSpaces
     val violations = report.violations.toList.iterator.map(_.toString).mkString(", ")
     // plain concatenation (not s"..."): the interpolation's `Any*` varargs trip
     // WartRemover's `Any` wart, while `+` concatenation is allowed.
     "deviates at step " + report.stepIndex.toString + ": " + violations +
       "; repro path: " + reproJson
 
-  /** The munit failure carrying [[failureMessage]]; `Location` is synthesized by
-   *  munit's macro at the call site (the suite, since the failure is suite-driven). */
-  private def failureException(report: ExecutionReport.DeviatesAt[S])(using loc: Location): Throwable =
+  /**
+   * The munit failure carrying [[failureMessage]]; `Location` is synthesized by
+   *  munit's macro at the call site (the suite, since the failure is suite-driven).
+   */
+  private def failureException(report: ExecutionReport.DeviatesAt[S])(using
+      loc: Location
+  ): Throwable =
     new munit.FailException(failureMessage(report), loc)
+
 end AccordantSuite

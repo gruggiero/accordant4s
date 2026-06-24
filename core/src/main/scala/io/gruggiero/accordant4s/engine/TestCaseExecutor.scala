@@ -44,7 +44,8 @@ object TestCaseExecutor:
       // setup: a clean SUT, then the user's beforeEach — both before step 1
       acquire = sut.reset *> hooks.beforeEach
     )(
-      use = _ => stepLoop(spec, testCase, sut, testCase.steps, StateProfile.one(testCase.initial), 0)
+      use =
+        _ => stepLoop(spec, testCase, sut, testCase.steps, StateProfile.one(testCase.initial), 0)
     )(
       // afterEach ALWAYS: bracket release runs on Passed, DeviatesAt, error, cancellation
       release = _ => hooks.afterEach
@@ -69,19 +70,19 @@ object TestCaseExecutor:
       case Nil => F.pure(ExecutionReport.Passed(index))
       case step :: rest =>
         for
-          res     <- sut.execute(step)
-          verdict  = spec.allows(step.op, step.req, res, profile)
-          report  <- verdict match
-                      // halt: no call after this step; the prefix is directly persistable
-                      case Verdict.Deviant(violations) =>
-                        F.pure(
-                          ExecutionReport.DeviatesAt(
-                            index,
-                            violations,
-                            TestCase(testCase.name, testCase.initial, testCase.steps.take(index + 1))
-                          )
-                        )
-                      // thread the surviving profile + remaining steps to the next step
-                      case Verdict.Conformant(nextProfile) =>
-                        stepLoop(spec, testCase, sut, rest, nextProfile, index + 1)
+          res <- sut.execute(step)
+          verdict = spec.allows(step.op, step.req, res, profile)
+          report <- verdict match
+            // halt: no call after this step; the prefix is directly persistable
+            case Verdict.Deviant(violations) =>
+              F.pure(
+                ExecutionReport.DeviatesAt(
+                  index,
+                  violations,
+                  TestCase(testCase.name, testCase.initial, testCase.steps.take(index + 1))
+                )
+              )
+            // thread the surviving profile + remaining steps to the next step
+            case Verdict.Conformant(nextProfile) =>
+              stepLoop(spec, testCase, sut, rest, nextProfile, index + 1)
         yield report

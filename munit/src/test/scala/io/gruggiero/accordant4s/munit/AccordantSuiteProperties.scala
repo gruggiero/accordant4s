@@ -29,7 +29,7 @@ import io.gruggiero.accordant4s.engine.{
 }
 import io.gruggiero.accordant4s.fixtures.BankState
 import io.gruggiero.accordant4s.fixtures.ExecutionFixtures.{RefSut, faultyWithdrawCase}
-import io.gruggiero.accordant4s.fixtures.GraphFixtures.*
+import io.gruggiero.accordant4s.fixtures.GraphFixtures._
 import io.gruggiero.accordant4s.fixtures.InputFixtures.{DepositRequest, deposit}
 import io.gruggiero.accordant4s.fixtures.PersistenceFixtures.given
 import io.gruggiero.accordant4s.persist.TestCasePersistence
@@ -51,9 +51,11 @@ final class AccordantSuiteProperties extends HedgehogSuite:
     Vector("alpha", "beta", "gamma").map(namedCase)
 
   /** A minimal suite over `cases`, acquiring a fresh `RefSut` per test. */
-  private final class CasesSuite(cases: Vector[TestCase[BankState]]) extends AccordantSuite[BankState]:
-    def spec: Spec[BankState]                                      = bankSpec
-    def generatedCases: Vector[TestCase[BankState]]                = cases
+  final private class CasesSuite(cases: Vector[TestCase[BankState]])
+      extends AccordantSuite[BankState]:
+    def spec: Spec[BankState]                       = bankSpec
+    def generatedCases: Vector[TestCase[BankState]] = cases
+
     def sutResource: Resource[IO, SystemUnderTest[IO, BankState]] =
       Resource.eval(RefSut(empty, 0L))
 
@@ -66,8 +68,8 @@ final class AccordantSuiteProperties extends HedgehogSuite:
   property("AccordantSuite registers one munit test per case, named by the case label") {
     for _ <- Gen.constant(()).forAll
     yield
-      val suite = new CasesSuite(namedCases)
-      val names = suite.munitTests().map(_.name).toVector
+      val suite    = new CasesSuite(namedCases)
+      val names    = suite.munitTests().map(_.name).toVector
       val expected = namedCases.map(c => c.name: String)
       Result.assert(
         names.length == namedCases.length && names.corresponds(expected)(_ == _)
@@ -87,7 +89,7 @@ final class AccordantSuiteProperties extends HedgehogSuite:
         yield report
       program.unsafeRunSync() match
         case dev: ExecutionReport.DeviatesAt[BankState] =>
-          val msg = suite.failureMessage(dev)
+          val msg       = suite.failureMessage(dev)
           val reproJson = TestCasePersistence.toJson[BankState](dev.reproPath).noSpaces
           // step index (as a decimal substring), a violation mentioning Withdraw,
           // and the persisted repro JSON embedded verbatim

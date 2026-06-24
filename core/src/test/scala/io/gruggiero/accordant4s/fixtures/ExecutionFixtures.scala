@@ -31,11 +31,11 @@ package io.gruggiero.accordant4s.fixtures
 // ═══════════════════════════════════════════════════════════════════════════
 
 import cats.effect.{IO, Ref}
-import hedgehog.{Gen, Range, Size}
 import hedgehog.core.Seed
+import hedgehog.{Gen, Range, Size}
 import io.gruggiero.accordant4s.domain.{CoverageAlgorithm, MaxDepth, OutcomeEval, StateOps}
 import io.gruggiero.accordant4s.engine.SystemUnderTest
-import io.gruggiero.accordant4s.fixtures.GraphFixtures.*
+import io.gruggiero.accordant4s.fixtures.GraphFixtures._
 import io.gruggiero.accordant4s.fixtures.InputFixtures.{DepositRequest, deposit}
 import io.gruggiero.accordant4s.fixtures.PersistenceFixtures.genAlgorithm
 import io.gruggiero.accordant4s.spec.{Operation, OperationCall}
@@ -113,8 +113,7 @@ object ExecutionFixtures:
    * The prefix establishes a balance so the conformant expectation is a success;
    * the faulty step's `Success(-1)` therefore deviates at its own step.
    */
-  val genFaultyWithdrawCase
-      : Gen[io.gruggiero.accordant4s.spec.TestCase[BankState]] =
+  val genFaultyWithdrawCase: Gen[io.gruggiero.accordant4s.spec.TestCase[BankState]] =
     for
       id  <- Gen.element1("alice", "bob")
       amt <- Gen.int(Range.linear(1, 100)).map(i => BigDecimal(i))
@@ -198,17 +197,28 @@ object ExecutionFixtures:
       conformantCase: io.gruggiero.accordant4s.spec.TestCase[BankState]
   ): IO[(io.gruggiero.accordant4s.spec.TestCase[BankState], SystemUnderTest[IO, BankState])] =
     mode match
-      case SutMode.Passing   => RefSut(conformantCase.initial, 0L).map(sut => (conformantCase, sut))
-      case SutMode.Deviating => RefSut(faultyWithdrawCase.initial, 0L).map(sut => (faultyWithdrawCase, sut))
-      case SutMode.Raising   =>
+      case SutMode.Passing => RefSut(conformantCase.initial, 0L).map(sut => (conformantCase, sut))
+      case SutMode.Deviating =>
+        RefSut(faultyWithdrawCase.initial, 0L).map(sut => (faultyWithdrawCase, sut))
+      case SutMode.Raising =>
         raisingOnCall(2, conformantCase.initial, 0L).map(sut => (conformantCase, sut))
 
   // ── Composite generator: (spec, inputs, initial, depth, seed, algorithm) ───
 
-  /** Reuses spec:state-graph's spec/input pool + spec:test-generation's algorithm
-   *  generator — the soundness property's input space. */
-  val genSpecInputsDepthAlgo
-      : Gen[(io.gruggiero.accordant4s.spec.Spec[BankState], List[OperationCall[BankState]], BankState, MaxDepth, Long, CoverageAlgorithm)] =
+  /**
+   * Reuses spec:state-graph's spec/input pool + spec:test-generation's algorithm
+   *  generator — the soundness property's input space.
+   */
+  val genSpecInputsDepthAlgo: Gen[
+    (
+        io.gruggiero.accordant4s.spec.Spec[BankState],
+        List[OperationCall[BankState]],
+        BankState,
+        MaxDepth,
+        Long,
+        CoverageAlgorithm
+    )
+  ] =
     for
       (spec, inputs, initial, depth, seed) <- GraphFixtures.genSmallSpecAndInputs
       algo                                 <- genAlgorithm

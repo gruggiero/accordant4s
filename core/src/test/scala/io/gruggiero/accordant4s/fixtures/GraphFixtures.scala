@@ -57,6 +57,8 @@ object GraphFixtures:
   enum WithdrawResponse derives CanEqual:
     case Success(newBalance: BigDecimal)
     case NotFound
+    case Timeout
+    case ServerError
 
   val withdrawName: OperationName = OperationName("Withdraw")
 
@@ -68,6 +70,10 @@ object GraphFixtures:
     case WithdrawResponse.NotFound => ().validNel[SpecViolation]
     case _ => SpecViolation.CheckFailed(withdrawName, "expected not-found").invalidNel
 
+  private val wTimeout: ResponseCheck[WithdrawResponse] =
+    case WithdrawResponse.Timeout => ().validNel[SpecViolation]
+    case _ => SpecViolation.CheckFailed(withdrawName, "expected timeout").invalidNel
+
   val withdraw: Operation[WithdrawRequest, WithdrawResponse, BankState] = Operation(
     withdrawName,
     (req, _) =>
@@ -76,9 +82,10 @@ object GraphFixtures:
           expect(wSuccess).thenState((res, s) =>
             res match
               case WithdrawResponse.Success(b) => s.copy(accounts = s.accounts.updated(req.id, b))
-              case WithdrawResponse.NotFound   => s
+              case _                           => s
           ),
-          expect(wNotFound).sameState
+          expect(wNotFound).sameState,
+          expect(wTimeout).sameState
         )
       ),
     (req, s) =>

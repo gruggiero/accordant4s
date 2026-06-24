@@ -23,9 +23,8 @@ package io.gruggiero.accordant4s.testexec
 //  shared length — see Property/Scenario happy-path below.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import cats.effect.IO
 import cats.effect.unsafe.implicits.global
-import cats.effect.{Ref => IoRef}
+import cats.effect.{IO, Ref => IoRef}
 import cats.syntax.all._
 import hedgehog._
 import hedgehog.munit.HedgehogSuite
@@ -41,8 +40,8 @@ import io.gruggiero.accordant4s.engine.{
   TestCaseGenerator
 }
 import io.gruggiero.accordant4s.fixtures.BankState
-import io.gruggiero.accordant4s.fixtures.ExecutionFixtures.*
-import io.gruggiero.accordant4s.fixtures.GraphFixtures.*
+import io.gruggiero.accordant4s.fixtures.ExecutionFixtures._
+import io.gruggiero.accordant4s.fixtures.GraphFixtures._
 import io.gruggiero.accordant4s.fixtures.InputFixtures.{DepositRequest, deposit}
 import io.gruggiero.accordant4s.fixtures.PersistenceFixtures.genTestCase
 import io.gruggiero.accordant4s.spec.{Spec, TestCase}
@@ -87,7 +86,7 @@ final class TestExecutionProperties extends HedgehogSuite:
     yield
       if transitionCases.isEmpty then Result.failure.log("no transition cases")
       else
-        val sut = RefSut(empty, 0L).unsafeRunSync()
+        val sut     = RefSut(empty, 0L).unsafeRunSync()
         val reports = runAll(bankSpec, transitionCases, sut).unsafeRunSync()
         Result.assert(reports.size == transitionCases.size && reports.zip(transitionCases).forall {
           case (Passed(stepsRun), tc) => stepsRun == tc.steps.length
@@ -99,14 +98,13 @@ final class TestExecutionProperties extends HedgehogSuite:
   property("a faulty-withdraw SUT deviates with a persistable reproducing path") {
     for _ <- Gen.constant(()).forAll
     yield
-      val sut = RefSut(faultyWithdrawCase.initial, 0L).unsafeRunSync()
+      val sut    = RefSut(faultyWithdrawCase.initial, 0L).unsafeRunSync()
       val report = TestCaseExecutor.run(bankSpec, faultyWithdrawCase, sut, noHooks).unsafeRunSync()
       Result.assert(report match
         case DeviatesAt(_, violations, reproPath) =>
           violations.exists(_.toString.contains("Withdraw")) &&
           lastOpName(reproPath).contains(faultedOpName)
-        case _ => false
-      )
+        case _ => false)
   }
 
   // spec:test-execution — Scenario: Edge case — deviation halts execution
@@ -146,7 +144,7 @@ final class TestExecutionProperties extends HedgehogSuite:
           for
             ref <- IoRef.of[IO, (Int, Int)]((0, 0))
             sut <- RefSut(empty, 0L)
-            _   <- cases.traverse_(tc =>
+            _ <- cases.traverse_(tc =>
               TestCaseExecutor.run(bankSpec, tc, sut, countingHooks(ref)).void
             )
             r <- ref.get
@@ -174,9 +172,9 @@ final class TestExecutionProperties extends HedgehogSuite:
   property("reference implementation conformance") {
     for (spec, inputs, initial, depth, seed, algo) <- genSpecInputsDepthAlgo.forAll
     yield
-      val graph = GraphExplorer.explore(spec, inputSetOf(inputs), initial, depth, seed)
-      val cases = TestCaseGenerator.generate(graph, algo)
-      val sut = RefSut(initial, seed).unsafeRunSync()
+      val graph   = GraphExplorer.explore(spec, inputSetOf(inputs), initial, depth, seed)
+      val cases   = TestCaseGenerator.generate(graph, algo)
+      val sut     = RefSut(initial, seed).unsafeRunSync()
       val reports = runAll(spec, cases, sut).unsafeRunSync()
       Result.assert(cases.isEmpty || reports.zip(cases).forall {
         case (Passed(stepsRun), tc) => stepsRun == tc.steps.length
@@ -188,12 +186,11 @@ final class TestExecutionProperties extends HedgehogSuite:
   property("fault detection") {
     for faultyCase <- genFaultyWithdrawCase.forAll
     yield
-      val sut = RefSut(faultyCase.initial, 0L).unsafeRunSync()
+      val sut    = RefSut(faultyCase.initial, 0L).unsafeRunSync()
       val report = TestCaseExecutor.run(bankSpec, faultyCase, sut, noHooks).unsafeRunSync()
       Result.assert(report match
         case DeviatesAt(_, _, path) => lastOpName(path).contains(faultedOpName)
-        case _                      => false
-      )
+        case _                      => false)
   }
 
   // spec:test-execution — Property: Deviation index is the first deviation.
@@ -206,14 +203,13 @@ final class TestExecutionProperties extends HedgehogSuite:
   property("deviation index is the first deviation") {
     for faultyCase <- genFaultyWithdrawCase.forAll
     yield
-      val sut = RefSut(faultyCase.initial, 0L).unsafeRunSync()
+      val sut    = RefSut(faultyCase.initial, 0L).unsafeRunSync()
       val report = TestCaseExecutor.run(bankSpec, faultyCase, sut, noHooks).unsafeRunSync()
       Result.assert(report match
         case DeviatesAt(n, _, _) =>
           // the faulty step is the LAST step; the deviation index is that step
           n == faultyCase.steps.length - 1
-        case Passed(_) => false
-      )
+        case Passed(_) => false)
   }
 
   // spec:test-execution — Property: Hook invariant.
@@ -251,9 +247,11 @@ final class TestExecutionProperties extends HedgehogSuite:
       ref.update { case (b, a) => (b, a + 1) }
     )
 
-  /** Run one case under a mode's SUT, attempting the run (so an erroring SUT in
+  /**
+   * Run one case under a mode's SUT, attempting the run (so an erroring SUT in
    *  Raising mode still observes the always-run `afterEach`). Returns the
-   *  outcome (Left = error re-raised) and BOTH hook counts. */
+   *  outcome (Left = error re-raised) and BOTH hook counts.
+   */
   private def runWithCountingHooksAttempted(
       spec: Spec[BankState],
       tc: TestCase[BankState],
@@ -263,8 +261,8 @@ final class TestExecutionProperties extends HedgehogSuite:
       ref  <- IoRef.of[IO, (Int, Int)]((0, 0))
       pair <- scenarioForMode(mode, tc)
       (caseForMode, sut) = pair
-      out  <- TestCaseExecutor.run(spec, caseForMode, sut, countingHooks(ref)).attempt
-      r    <- ref.get
+      out <- TestCaseExecutor.run(spec, caseForMode, sut, countingHooks(ref)).attempt
+      r   <- ref.get
     yield (out, r._1, r._2)
 
   /** A fixed ≥2-step conformant case for the "2nd call raises" scenario. */

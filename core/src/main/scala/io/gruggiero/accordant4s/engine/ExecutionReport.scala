@@ -14,6 +14,7 @@ import io.gruggiero.accordant4s.spec.TestCase
  */
 enum ExecutionReport[S] derives CanEqual:
   case Passed(stepsRun: Int)
+
   case DeviatesAt(
       stepIndex: Int,
       violations: NonEmptyList[SpecViolation],

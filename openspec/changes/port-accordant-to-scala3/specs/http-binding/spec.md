@@ -8,7 +8,7 @@ endpoints so a deployed service becomes a `SystemUnderTest[IO]`, using http4s
 
 | Concept | Kind | Package |
 |---------|------|---------|
-| `SystemUnderTest[F]` | trait | `engine` (introduced by spec:test-execution) |
+| `SystemUnderTest[F[_], S]` | trait | `engine` (introduced by spec:test-execution) |
 | `OperationCall[S]` | sealed trait | `spec` (introduced by spec:input-sets) |
 | `Operation[Req, Res, S]` | case class | `spec` (introduced by spec:oracle-core) |
 | `OperationName` | opaque type | `domain` (introduced by spec:oracle-core) |
@@ -23,7 +23,7 @@ endpoints so a deployed service becomes a `SystemUnderTest[IO]`, using http4s
 | `HttpRoute[Req]` | case class | `(method, uri builder Req => Uri, entity encoding)` for one operation |
 | `HttpResponseMapper[Res]` | trait | Total mapping `org.http4s.Response[IO] => IO[Res]` (status + body → user response ADT) |
 | `HttpBinding[S]` | case class | `OperationName`-indexed routes + mappers |
-| `Http4sSut` | object | `apply[S](client: Client[IO], binding: HttpBinding[S], timeout, retries): SystemUnderTest[IO]` |
+| `Http4sSut` | object | `apply[S](client: Client[IO], binding: HttpBinding[S], timeout, retries): SystemUnderTest[IO, S]` |
 | `TransportOutcome` | enum | `Completed(status, body)` \| `TimedOut` \| `ConnectionFailed(detail)` — transport facts as data |
 | `MaxRetryCount` | opaque type (`Int :| Positive`) | Bound on idempotent connection retries |
 
@@ -136,7 +136,7 @@ property("transparency — HTTP SUT equals direct SUT") {
     tc <- genTestCase.forAll
   } yield Result.assert(
     (TestCaseExecutor.run(spec, tc, httpSut, noHooks),
-     TestCaseExecutor.run(spec, tc, RefSut(spec), noHooks)).mapN(_ == _).unsafeRunSync()
+     TestCaseExecutor.run(spec, tc, refSut, noHooks)).mapN(_ == _).unsafeRunSync()
   )
 }
 ```
