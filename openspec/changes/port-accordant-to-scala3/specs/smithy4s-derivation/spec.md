@@ -23,7 +23,7 @@ Lives in the `accordant4s-smithy4s` module.
 | `SmithyOps` | object | `forService[Alg, S](service: smithy4s.Service[Alg])` entry point |
 | `EndpointSlot[Req, Res, S]` | case class | A derived, not-yet-behaved operation slot: name + schemas from one Smithy endpoint |
 | `SpecBuilder[Alg, S]` | builder | Type-safe assignment of `(Req, S) => Outcome[Res, S]` + mock per endpoint; `build` fails listing unbehaved endpoints |
-| `SmithyHttpBinding` | object | Derive `HttpRoute`/entity codecs for the slots from the service's HTTP traits (bridges to spec:http-binding) |
+| `SmithyHttpBinding` | object | **DEFERRED** — Derive `HttpRoute`/entity codecs for the slots from the service's HTTP traits (bridges to spec:http-binding) — split to a follow-up change |
 | `TestBank.smithy` | test fixture (Smithy IDL) | Small bank service under `smithy4s/src/test/smithy/` exercising the derivation |
 
 ## ADDED Requirements
@@ -70,7 +70,14 @@ Lives in the `accordant4s-smithy4s` module.
 **When** `build` runs
 **Then** the result is `Left(NonEmptyList.one("GetAccount"))`
 
-### Requirement: Derived HTTP binding
+### Requirement: Derived HTTP binding (DEFERRED to a follow-up change)
+
+> **Deferred**: the HTTP-bridge (`SmithyHttpBinding`) builds on spec:http-binding's
+> existential-Endpoint bridge, which is the riskiest type-level piece. This
+> requirement is split out to a follow-up change so the core value — contract/oracle
+> drift prevention via `SmithyOps` + `SpecBuilder` — lands first. The concepts
+> `SmithyHttpBinding` and the end-to-end HTTP scenario are out of scope for this
+> spec iteration.
 
 `SmithyHttpBinding.forService` SHALL derive an `HttpBinding[S]` for the slots (routes from the HTTP traits, entity codecs from the smithy4s schemas) usable directly with `Http4sSut`, and MUST return `Left` naming operations that lack HTTP bindings.
 
@@ -162,4 +169,4 @@ property("derived binding transparency") {
 
 ## Verification Rings
 
-Ring 0 ✅ · Ring 1 ✅ · Ring 2 — (separate module) · Ring 3 ✅ · Ring 4 — (codecs are smithy4s-generated; covered by the transparency property) · Ring 5 — · Ring 6 — · Ring 7 — · Ring 8 ✅ · Ring 9 — (accordant4s defines no API of its own)
+Ring 0 ✅ · Ring 1 ✅ · Ring 2 — (separate module) · Ring 3 ✅ (Req 1+2 only; Req 3 deferred) · Ring 4 — (codecs are smithy4s-generated; covered by the deferred transparency property) · Ring 5 — · Ring 6 — · Ring 7 — · Ring 8 ✅ · Ring 9 — (accordant4s defines no API of its own)

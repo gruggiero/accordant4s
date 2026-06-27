@@ -120,8 +120,13 @@ lazy val http4s = (project in file("http4s"))
 
 lazy val smithy4s = (project in file("smithy4s"))
   .dependsOn(core)
+  .enablePlugins(Smithy4sCodegenPlugin)
   .settings(
     name := "accordant4s-smithy4s",
+    // The derivation intropyespects smithy4s `Service[Alg]`; `asInstanceOf`
+    // warts are exempted for the same reason as http4s (existential bridge).
+    wartremoverErrors := Warts.unsafe
+      .filterNot(w => w == Wart.TripleQuestionMark || w == Wart.AsInstanceOf || w == Wart.Any),
     libraryDependencies ++= Seq(
       Smithy4sCore
     ) ++ munitTestDeps,

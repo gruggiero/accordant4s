@@ -57,6 +57,7 @@
 | `ExecutionHooks[F[_]]` | `beforeEach: F[Unit]`, `afterEach: F[Unit]` (plain record; bracket semantics are the executor's obligation; companion `noop[F]` default) | `io.gruggiero.accordant4s.engine` | test-execution |
 | `HttpRoute[Req]` | `uri: Req => org.http4s.Uri`, `encode: Req => org.http4s.Request[IO]` (companion `jsonPost[Req](uri)(using EntityEncoder[IO, Req])`) | `io.gruggiero.accordant4s.http` | http-binding |
 | `HttpBinding[S]` | `endpoints: Map[OperationName, Endpoint[S]]` (`endpointFor(call)`; companion `empty`, `register(op, route, mapper): HttpBinding => HttpBinding`, `check(spec, binding): Either[Set[OperationName], HttpBinding]`); `Endpoint[S]` is a sealed trait (existential slot: `encode(call): IO[Request[IO]]`, `decode(outcome): IO[Any]`; built from `Operation[Req, Res, S]`) | `io.gruggiero.accordant4s.http` | http-binding |
+| `EndpointSlot` | `name: OperationName`, `endpoint: SmithyEndpoint` (+ `shapeId: ShapeId`); `SmithyEndpoint` is a sealed trait (existential wrapper around `smithy4s.Endpoint`) | `io.gruggiero.accordant4s.smithy` | smithy4s-derivation |
 
 ## Service Traits
 
@@ -79,6 +80,8 @@
 | `TestCaseGenerator` | pure object | `generate[S](graph: StateGraph[S], algorithm: CoverageAlgorithm)(using StateOps[S]): Vector[TestCase[S]]` (StateCoverage greedy path-extension / TransitionCoverage per-edge / deterministic splitmix64 RandomWalk; paths drawn only from `graph.edges`) | `io.gruggiero.accordant4s.engine` | test-generation |
 | `TestCasePersistence` | pure object (`persist`) | `schemaVersion: Int`, `given callLabelCodec: Codec[CallLabel]`, `given testCaseCodec[S](using Codec[S], Codec[OperationCall[S]]): Codec[TestCase[S]]`, `toJson[S](tc)(using Encoder[TestCase[S]]): Json`, `fromJson[S](json)(using Decoder[TestCase[S]]): Either[PersistenceError, TestCase[S]]` (versioned envelope; version-gate before decode; never throws) | `io.gruggiero.accordant4s.persist` | test-generation |
 | `TestCaseExecutor` | pure object (`engine`) | `run[F[_], S](spec, testCase, sut, hooks)(using Async[F], StateOps[S]): F[ExecutionReport[S]]` (step-wise oracle replay; per step executes the call, validates the ACTUAL response via `spec.allows`, threads the surviving profile, halts at the first `Deviant`; `bracket` runs `sut.reset`+`beforeEach` before step 1 and `afterEach` ALWAYS incl. error/cancellation; errors re-raised, never converted to verdicts) | `io.gruggiero.accordant4s.engine` | test-execution |
+| `SmithyOps` | pure object (`smithy`) | `forService[Alg[_[_,_,_,_,_]]](service: smithy4s.Service[Alg]): Vector[EndpointSlot]` (one slot per smithy4s endpoint, named by the ShapeId) | `io.gruggiero.accordant4s.smithy` | smithy4s-derivation |
+| `SpecBuilder[S]` | builder (`smithy`) | `assign[Req,Res](name, behaviour, mock): SpecBuilder[S]`, `build: Either[NonEmptyList[OperationName], Spec[S]]` (complete-or-fail: Right iff every slot received a behaviour; Left lists the missing names) | `io.gruggiero.accordant4s.smithy` | smithy4s-derivation |
 
 ## Smithy Models
 

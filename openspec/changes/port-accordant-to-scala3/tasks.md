@@ -57,13 +57,13 @@ R3 (property tests) and R8 (adversarial review) are mandatory for every spec.
 - [x] Rings: R0 R1 R3 R4 (HTTP wire round-trip laws) R8
 - [x] Concept-delta check + inventory update + checkpoint
 
-## 7. smithy4s-derivation (Operation slots + HTTP binding derived from Smithy IDL)
+## 7. smithy4s-derivation (Operation slots + HTTP binding derived from Smithy IDL) — Req 1+2; Req 3 deferred
 
-- [ ] Step 1 — typed contract: `SmithyOps`, `EndpointSlot`, `SpecBuilder`, `SmithyHttpBinding` + `TestBank.smithy` fixture (human gate)
-- [ ] Step 2 — test oracle: scenarios + 3 properties + compile-negative stub (human gate)
-- [ ] Step 3 — implementation (new `accordant4s-smithy4s` module)
-- [ ] Rings: R0 R1 R3 R8
-- [ ] Concept-delta check + inventory update + checkpoint
+- [x] Step 1 — typed contract: `SmithyOps`, `EndpointSlot`, `SpecBuilder` + `TestBank.smithy` fixture (human gate)
+- [x] Step 2 — test oracle: scenarios + 3 properties + compile-negative stub (human gate)
+- [x] Step 3 — implementation (new `accordant4s-smithy4s` module + codegen)
+- [x] Rings: R0 R1 R3 R8
+- [x] Concept-delta check + inventory update + checkpoint
 
 ## 8. linearizability (concurrent cases, parallel executor, permutation checker)
 
