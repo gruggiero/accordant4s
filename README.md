@@ -16,10 +16,10 @@ and what the resulting state(s) are. The same `Spec` can drive hand-written
 scenarios, property tests, exhaustive state-graph exploration, and replay
 against a real running service.
 
-> **Status: early development.** Spec 1 (`oracle-core`) is implemented and fully
-> verified (see [Verification](#verification)). Specs 2–8 (input sets, state-graph
-> BFS, test generation, execution, HTTP/Smithy bindings, linearizability) are
-> designed but not yet implemented — see the [Roadmap](#roadmap).
+> **Status: all 8 specs implemented.** 99 tests, all passing across 5 sbt
+> modules (`core`, `munit`, `http4s`, `smithy4s`, `verified`). The oracle kernel
+> is formally verified with Stainless (9/9 VCs). See
+> [Verification](#verification) and [Roadmap](#roadmap).
 
 ---
 
@@ -85,8 +85,8 @@ its .NET assemblies.
 | boolean + message result | `ValidatedNel[SpecViolation, Unit]` | **accumulates every** failed check, not just the first |
 | `Expect.OneOf(...)` graph branching | `Outcome.OneOf(NonEmptyList[Outcome])` + `StateProfile[S]` | non-determinism as an `Eq`-deduplicated set of candidate states |
 | `spec.Allows(op, req, res, state) → (bool, msg, next)` | `spec.allows(op, req, res, profile): Verdict[S]` | `Conformant(profile)` \| `Deviant(NonEmptyList[SpecViolation])` |
-| `Accordant.Choose.Each<T>()` exhaustive enumeration | Hedgehog `Gen`-backed input sets *(planned)* | shrinking + distribution control, still deterministic |
-| `HttpExecutable` | http4s `Client[IO]` + circe *(planned)* | already in the stack |
+| `Accordant.Choose.Each<T>()` exhaustive enumeration | Hedgehog `Gen`-backed input sets | shrinking + distribution control, still deterministic |
+| `HttpExecutable` | http4s `Client[IO]` + circe | already in the stack |
 | `Accordant.SourceGenerator` (Roslyn) | — (not needed) | immutable case classes replace it |
 
 **Things Scala makes possible that .NET could not:**
@@ -227,8 +227,8 @@ engine ─▶ spec ─▶ domain        (nothing points "up")
 |---|---|---|
 | `io.gruggiero.accordant4s.domain` | pure ADTs, opaque types, and the oracle **kernel** (`OutcomeEval`, `ProfileEval`) | cats, Iron, stdlib |
 | `io.gruggiero.accordant4s.spec` | `Operation`, `Spec`, the `expect` DSL | `domain`, cats, Iron, hedgehog |
-| `io.gruggiero.accordant4s.engine` *(planned)* | BFS, generation, execution; `engine.verified` for Ring-6 kernels | `domain`, `spec` |
-| modules `munit` / `http4s` / `smithy4s` *(planned)* | integration bindings | core + their integration lib |
+| `io.gruggiero.accordant4s.engine` | BFS, generation, execution; `engine.verified` for Ring-6 kernels | `domain`, `spec` |
+| modules `munit` / `http4s` / `smithy4s` | integration bindings (`AccordantSuite`, http4s SUT, Smithy IDL derivation) | core + their integration lib |
 | module `verified` | Scala 3.7.2 leaf holding the Stainless model (see below) | nothing project-local |
 
 > **Design note (oracle-core).** The pure kernel lives in `domain`, not
@@ -243,29 +243,27 @@ engine ─▶ spec ─▶ domain        (nothing points "up")
 
 accordant4s *is itself a verification oracle* — a bug here silently mis-judges
 every system tested with it — so it is developed under a layered set of
-verification "rings". Status for the implemented `oracle-core`:
+verification "rings". Current status across all 8 implemented specs:
 
 | Ring | What it checks | Status |
 |---|---|---|
-| 0 Compilation | strict `scalac` (`-Werror -Wunused:all -Wvalue-discard -language:strictEquality …`) + Iron | ✅ |
-| 1 Lint | Scalafix (`DisableSyntax`/`RemoveUnused`/`OrganizeImports`), scalafmt, WartRemover | ✅ |
+| 0 Compilation | strict `scalac` (`-Werror -Wunused:all -Wvalue-discard -language:strictEquality …`) + Iron | ✅ all modules |
+| 1 Lint | Scalafix (`DisableSyntax`/`RemoveUnused`/`OrganizeImports`), scalafmt, WartRemover | ✅ all modules |
 | 2 Architecture | one-directional layer dependencies | ✅ |
-| 3 Property tests | Hedgehog invariants + scenarios + compile-negative checks | ✅ 20/20 |
-| 4 Wire/persistence compat | circe round-trips | n/a until persistence lands |
-| 5 Mutation | Stryker4s on changed files | ✅ 100% on the kernel |
+| 3 Property tests | Hedgehog invariants + scenarios + compile-negative checks | ✅ 99/99 across all modules |
+| 4 Wire/persistence compat | circe round-trips + HTTP wire-format laws | ✅ (test-generation, http-binding) |
+| 5 Mutation | Stryker4s on changed files | ✅ 100% on the oracle kernel |
 | 6 Formal | Stainless proof of the kernel + a mechanical bridge to production | ✅ 9/9 VCs |
-| 7 Model checking | (no TLA+/Apalache; covered by exhaustive-comparison properties later) | n/a |
-| 8 Adversarial review | requirement-by-requirement spec-vs-code audit | ⚠️ 1 disclosed item¹ |
+| 7 Model checking | (no TLA+/Apalache; covered by exhaustive-comparison properties) | n/a |
+| 8 Adversarial review | requirement-by-requirement spec-vs-code audit | ✅ all 8 specs |
 | 9 Telemetry | otel4s/Daut runtime monitors | n/a (library, no telemetry) |
-
-¹ `SpecViolation.NoBranchMatched` is in the committed algebra but not yet
-constructed: the binding Ring-3 property requires a *flat* atomic violation list,
-so per-candidate wrapping is reserved for the later execution/linearizability
-specs.
 
 For an interactive walkthrough of the oracle kernel, the Stainless mirror, and
 the production-to-model bridge tests, open
 [`docs/oracle-kernel-explainer.html`](docs/oracle-kernel-explainer.html).
+For a high-level overview of the library and the bank example, see
+[`docs/accordant4s-simple.html`](docs/accordant4s-simple.html), or the full
+deck at [`docs/accordant4s-presentation.html`](docs/accordant4s-presentation.html).
 
 ### Ring 6 — Stainless formal verification (in detail)
 
@@ -378,8 +376,8 @@ builds never trigger Stainless.
 | Effects / streaming | cats-effect / fs2 | 3.5.7 / 3.11.0 |
 | Refined types | Iron + iron-cats | 3.0.2 |
 | JSON / persistence | circe | 0.14.13 |
-| HTTP *(planned)* | http4s-client + http4s-circe | 0.23.30 |
-| IDL *(planned)* | smithy4s-core | 0.18.33 |
+| HTTP | http4s-client + http4s-circe | 0.23.30 |
+| IDL / codegen | smithy4s-core + smithy4s-codegen | 0.18.33 |
 | Test framework | munit + munit-cats-effect | 1.0.0 / 2.0.0 |
 | Property testing | Hedgehog (`hedgehog-core` / `hedgehog-munit`) | 0.13.1 |
 | Mutation testing | sbt-stryker4s | 0.21.0 |
@@ -395,17 +393,17 @@ rings.
 1. **oracle-core** — `Outcome`/`Verdict`/`StateProfile`, `Spec`, the `allows`
    oracle. ✅ *implemented & verified*
 2. **input-sets** — labelled `OperationCall`s, `InputSet[S]`, Hedgehog-backed
-   input sources.
+   input sources. ✅ *implemented*
 3. **state-graph** — bounded BFS over reachable states (`fs2.Stream`),
-   self-loop detection.
+   self-loop detection. ✅ *implemented*
 4. **test-generation** — coverage algorithms (state/transition/random-walk),
-   circe persistence.
+   circe persistence. ✅ *implemented*
 5. **test-execution** — `SystemUnderTest[F]`, step-wise replay validated through
-   `allows`, munit module.
-6. **http-binding** — http4s `Client[IO]` + circe → `SystemUnderTest[IO]`.
-7. **smithy4s-derivation** — derive `Operation` slots from Smithy service shapes.
+   `allows`, munit module. ✅ *implemented*
+6. **http-binding** — http4s `Client[IO]` + circe → `SystemUnderTest[IO]`. ✅ *implemented*
+7. **smithy4s-derivation** — derive `Operation` slots from Smithy service shapes. ✅ *implemented* (Req 1+2; Req 3 `SmithyHttpBinding` deferred)
 8. **linearizability** — concurrent cases, parallel execution, permutation-based
-   linearizability checker.
+   linearizability checker. ✅ *implemented*
 
 See [`openspec/changes/port-accordant-to-scala3/`](openspec/changes/port-accordant-to-scala3/)
 for the full proposal, design, per-spec specifications, and task tracker.
@@ -422,11 +420,14 @@ live in [`openspec/config.yaml`](openspec/config.yaml).
 accordant4s/
 ├── build.sbt                 # multi-module build (core, munit, http4s, smithy4s, verified)
 ├── project/                  # sbt plugins (incl. sbt-stainless in project/lib)
-├── core/src/{main,test}      # the library + its tests
+├── core/src/{main,test}      # the library + its tests (oracle kernel, engine, persistence)
+├── munit/src/{main,test}     # AccordantSuite — one munit test per generated case
+├── http4s/src/{main,test}    # http4s Client SUT binding + transport outcomes
+├── smithy4s/src/{main,test}  # Smithy IDL → Operation slots + SpecBuilder
 ├── verified/src/main         # Scala 3.7.2 Stainless model (Ring 6)
 ├── stryker4s.conf            # Ring 5 mutation config
 ├── openspec/                 # verified-scala3 schema, change artifacts, specs
-└── docs/                     # analysis report
+└── docs/                     # analysis report + interactive presentations
 ```
 
 Agent skills (`/opsx:*`): `explore`, `propose`, `apply`, `next-spec`,
@@ -443,4 +444,4 @@ Agent skills (`/opsx:*`): `explore`, `propose`, `apply`, `next-spec`,
 
 ## License
 
-Not yet specified.
+[MIT](LICENSE)
