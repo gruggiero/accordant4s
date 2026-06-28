@@ -90,4 +90,4 @@ concept delta + inventory update → checkpoint → WAIT for human approval.
 - [x] 5. `specs/test-execution/spec.md` — SystemUnderTest, step-wise oracle replay, hooks, munit module
 - [x] 6. `specs/http-binding/spec.md` — http4s Client binding, transport outcomes as data (http4s module)
 - [x] 7. `specs/smithy4s-derivation/spec.md` — Operation slots + HTTP binding derived from Smithy IDL (smithy4s module) — Req 1+2 implemented; Req 3 deferred
-- [ ] 8. `specs/linearizability/spec.md` — concurrent cases, parallel executor, permutation checker
+- [x] 8. `specs/linearizability/spec.md` — concurrent cases, parallel executor, permutation checker

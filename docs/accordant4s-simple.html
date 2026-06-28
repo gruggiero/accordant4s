@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>accordant4s — How It Works</title>
+<style>
+:root {
+  --ink: #16243a;
+  --ink-soft: #43536c;
+  --paper: #fbf7ef;
+  --panel: rgba(255, 255, 255, 0.85);
+  --panel-strong: #fffdf8;
+  --line: rgba(22, 36, 58, 0.14);
+  --accent: #d46f4d;
+  --accent-deep: #a34727;
+  --sea: #85b7b0;
+  --sea-deep: #4d8278;
+  --gold: #efc76a;
+  --ok: #25695d;
+  --warn: #8d5d18;
+  --err: #c0392b;
+  --shadow: 0 16px 40px rgba(22, 36, 58, 0.12);
+  --radius: 18px;
+  --slide-w: min(900px, calc(100vw - 3rem));
+  --slide-h: calc(100vh - 4rem);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: "Avenir Next", "Segoe UI", "Trebuchet MS", system-ui, sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top left, rgba(239, 199, 106, 0.34), transparent 34%),
+    radial-gradient(circle at top right, rgba(133, 183, 176, 0.28), transparent 30%),
+    linear-gradient(180deg, #f7efe2 0%, #fbf7ef 38%, #f2f6f5 100%);
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+h1, h2, h3 {
+  font-family: Georgia, "Palatino Linotype", "Book Antiqua", serif;
+  line-height: 1.2;
+  margin-bottom: 0.6rem;
+}
+h1 { font-size: 2.2rem; }
+h2 { font-size: 1.6rem; }
+h3 { font-size: 1.2rem; }
+
+p, li { color: var(--ink-soft); line-height: 1.6; }
+
+/* ── Slide container ──────────────────────────────────────────────────────── */
+.deck {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.slide {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem 2rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.45s cubic-bezier(0.4, 0, 0.2, 1), transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateX(40px);
+}
+
+.slide.active {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.slide.prev {
+  transform: translateX(-40px);
+}
+
+.slide-inner {
+  width: var(--slide-w);
+  max-height: var(--slide-h);
+  background: var(--panel);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 2.2rem 2.5rem;
+  overflow-y: auto;
+}
+
+/* ── Progress bar + nav ───────────────────────────────────────────────────── */
+.progress {
+  position: fixed;
+  top: 0; left: 0;
+  height: 4px;
+  background: linear-gradient(90deg, var(--accent), var(--gold));
+  z-index: 100;
+  transition: width 0.35s ease;
+}
+
+.nav-bar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  padding: 0.6rem;
+  z-index: 100;
+  background: rgba(251, 247, 239, 0.7);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--line);
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.nav-bar button {
+  border: 1px solid var(--line);
+  background: var(--panel-strong);
+  border-radius: 8px;
+  padding: 0.3rem 0.7rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--ink);
+  transition: background 0.2s;
+}
+.nav-bar button:hover { background: var(--accent); color: white; }
+.nav-bar .counter { font-weight: 600; color: var(--ink); min-width: 3rem; text-align: center; }
+
+/* ── Typography helpers ───────────────────────────────────────────────────── */
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.76rem;
+  color: var(--accent-deep);
+  font-weight: 700;
+  margin-bottom: 0.3rem;
+}
+.lede { font-size: 1.1rem; max-width: 64ch; }
+.subtle { font-size: 0.88rem; color: var(--ink-soft); opacity: 0.8; }
+
+/* ── Code blocks ──────────────────────────────────────────────────────────── */
+.code {
+  background: #1e293b;
+  border-radius: 12px;
+  padding: 1rem 1.2rem;
+  font-family: "Fira Code", "JetBrains Mono", "SF Mono", "Consolas", monospace;
+  font-size: 0.84rem;
+  line-height: 1.6;
+  color: #e2e8f0;
+  overflow-x: auto;
+  margin: 0.8rem 0;
+  border: 1px solid rgba(255,255,255,0.08);
+  white-space: pre;
+}
+.code .kw { color: #c084fc; font-weight: 500; }
+.code .ty { color: #7dd3fc; }
+.code .str { color: #86efac; }
+.code .num { color: #fbbf24; }
+.code .cmt { color: #64748b; font-style: italic; }
+.code .fn { color: #f9a8d4; }
+
+/* ── Cards ────────────────────────────────────────────────────────────────── */
+.card {
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1rem 1.2rem;
+  margin: 0.5rem 0;
+}
+.card h3 { color: var(--accent-deep); margin-bottom: 0.3rem; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; }
+.center { text-align: center; }
+
+.badge {
+  display: inline-block;
+  background: var(--sea);
+  color: white;
+  border-radius: 20px;
+  padding: 0.15rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-right: 0.3rem;
+}
+.badge.gold { background: var(--gold); color: var(--ink); }
+.badge.accent { background: var(--accent); }
+
+/* ── Flow diagram ─────────────────────────────────────────────────────────── */
+.flow-box {
+  display: inline-block;
+  border: 2px solid var(--sea-deep);
+  background: rgba(133, 183, 176, 0.12);
+  border-radius: 12px;
+  padding: 0.5rem 1rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--ink);
+  text-align: center;
+}
+.flow-arrow {
+  display: inline-block;
+  color: var(--accent);
+  font-size: 1.3rem;
+  margin: 0 0.4rem;
+  vertical-align: middle;
+}
+
+/* ── Verdict pills ────────────────────────────────────────────────────────── */
+.verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 8px;
+  padding: 0.2rem 0.6rem;
+  font-weight: 600;
+  font-size: 0.82rem;
+}
+.verdict.ok { background: rgba(37, 105, 93, 0.12); color: var(--ok); }
+.verdict.no { background: rgba(192, 57, 43, 0.12); color: var(--err); }
+
+/* ── Reveal animation ─────────────────────────────────────────────────────── */
+.slide.active .reveal {
+  animation: slideUp 0.5s ease forwards;
+  opacity: 0;
+}
+.slide.active .reveal:nth-child(1) { animation-delay: 0.08s; }
+.slide.active .reveal:nth-child(2) { animation-delay: 0.16s; }
+.slide.active .reveal:nth-child(3) { animation-delay: 0.24s; }
+.slide.active .reveal:nth-child(4) { animation-delay: 0.32s; }
+.slide.active .reveal:nth-child(5) { animation-delay: 0.40s; }
+.slide.active .reveal:nth-child(6) { animation-delay: 0.48s; }
+@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ── Title slide ──────────────────────────────────────────────────────────── */
+.title-slide .slide-inner {
+  text-align: center;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.7), rgba(255,255,255,0.3)),
+    repeating-linear-gradient(-45deg, rgba(22,36,58,0.025), rgba(22,36,58,0.025) 10px, transparent 10px, transparent 20px);
+}
+.title-slide h1 { font-size: 2.6rem; margin-bottom: 0.6rem; }
+.title-slide .logo { font-size: 3rem; margin-bottom: 0.5rem; }
+
+/* ── Scrollbar ────────────────────────────────────────────────────────────── */
+.slide-inner::-webkit-scrollbar { width: 6px; }
+.slide-inner::-webkit-scrollbar-track { background: transparent; }
+.slide-inner::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress" style="width: 10%"></div>
+
+<div class="deck" id="deck">
+
+<!-- ════════ SLIDE 1: TITLE ════════ -->
+<div class="slide title-slide active" data-slide="1">
+  <div class="slide-inner">
+    <div class="logo">⚖️</div>
+    <div class="eyebrow reveal">A Model-Based Testing Oracle for Scala 3</div>
+    <h1 class="reveal">accordant4s</h1>
+    <p class="lede reveal" style="margin: 0 auto 1.5rem;">
+      Describe your system as a <strong>typed state machine</strong>.
+      The same spec drives test generation, replay, and verdicts —
+      no hand-written assertions, no drift between model and tests.
+    </p>
+    <div class="reveal">
+      <span class="badge">Scala 3</span>
+      <span class="badge gold">cats-effect</span>
+      <span class="badge">Hedgehog</span>
+      <span class="badge gold">http4s</span>
+      <span class="badge">Stainless</span>
+    </div>
+    <p class="subtle reveal" style="margin-top: 2rem;">← → to navigate</p>
+  </div>
+</div>
+
+<!-- ════════ SLIDE 2: THE PROBLEM ════════ -->
+<div class="slide" data-slide="2">
+  <div class="slide-inner">
+    <div class="eyebrow reveal">The Problem</div>
+    <h2 class="reveal">Normal tests tangle two things</h2>
+    <div class="grid-2 reveal">
+      <div class="card">
+        <h3>❓ What is correct?</h3>
+        <p>"After a deposit of 50, the balance should be 50."
+        This is your <strong>oracle</strong> — the source of truth.</p>
+      </div>
+      <div class="card">
+        <h3>🎲 What to try?</h3>
+        <p>"Create → deposit → withdraw → deposit again."
+        This is your <strong>sequence</strong> — which paths to exercise.</p>
+      </div>
+    </div>
+    <div class="card reveal" style="border-color: var(--accent); margin-top: 1rem;">
+      <h3 style="color: var(--accent-deep);">In a normal test, both are welded together</h3>
+      <p>Want a different path? Rewrite the test. Want a different oracle? Rewrite <em>every</em> test.
+      The result: coverage holes you can't see, and brittle suites that test implementation details
+      rather than behavioural contracts.</p>
+    </div>
+    <p class="reveal" style="margin-top: 1rem; font-style: italic;">
+      <strong>Analogy:</strong> a restaurant critic who can only review one fixed meal.
+      Separate the <em>standard</em> from the <em>sampling</em>, and you can review any meal
+      against the same standard.
+    </p>
+  </div>
+</div>
+
+<!-- ════════ SLIDE 3: THE IDEA ════════ -->
+<div class="slide" data-slide="3">
+  <div class="slide-inner">
+    <div class="eyebrow reveal">The Core Idea</div>
+    <h2 class="reveal">Separate the oracle from the sequence</h2>
+    <div class="reveal center" style="margin: 1.5rem 0;">
+      <span class="flow-box">Spec[S]<br><span class="subtle">the oracle</span></span>
+      <span class="flow-arrow">← allows →</span>
+      <span class="flow-box" style="border-color: var(--accent); background: rgba(212,111,77,0.1);">(request, response)<br><span class="subtle">observed</span></span>
+      <span class="flow-arrow">→</span>
+      <span class="flow-box" style="border-color: var(--ok); background: rgba(37,105,93,0.1);">Verdict[S]<br><span class="subtle">Conformant or Deviant</span></span>
+    </div>
+    <p class="lede reveal">
+      Once the oracle is <strong>a value you can call</strong> —
+      <code>spec.allows(op, req, res, profile)</code> — <em>any</em> sequence source
+      can be checked against it:
+    </p>
+    <div class="grid-3 reveal" style="margin-top: 1rem;">
+      <div class="card"><h3>🔍 Explore</h3><p>Find reachable states from a finite input set</p></div>
+      <div class="card"><h3>📋 Generate</h3><p>Produce test cases with state/transition coverage</p></div>
+      <div class="card"><h3>🌐 Replay</h3><p>Run against a real system and judge every response</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ SLIDE 4: THE BANK MODEL ════════ -->
+<div class="slide" data-slide="4">
+  <div class="slide-inner">
+    <div class="eyebrow reveal">The Running Example</div>
+    <h2 class="reveal">A bank with accounts and balances</h2>
+    <p class="lede reveal">The state is a map of account IDs to balances. Each operation
+    has a <strong>behaviour</strong> (the oracle rule) and a <strong>mock</strong> (for offline exploration).</p>
+    <div class="code reveal"><span class="cmt">// The state: account id → balance (from BankState.scala)</span>
+<span class="kw">final case class</span> <span class="ty">BankState</span>(accounts: <span class="ty">Map</span>[<span class="ty">String</span>, <span class="ty">BigDecimal</span>]) <span class="kw">derives</span> <span class="ty">CanEqual</span>
+
+<span class="cmt">// Request and response types (from InputFixtures.scala)</span>
+<span class="kw">final case class</span> <span class="ty">DepositRequest</span>(accountId: <span class="ty">String</span>, amount: <span class="ty">BigDecimal</span>)
+<span class="kw">final case class</span> <span class="ty">DepositResponse</span>(newBalance: <span class="ty">BigDecimal</span>)
+
+<span class="cmt">// The deposit operation: oracle rule + mock response generator</span>
+<span class="kw">val</span> deposit: <span class="ty">Operation</span>[<span class="ty">DepositRequest</span>, <span class="ty">DepositResponse</span>, <span class="ty">BankState</span>] =
+  <span class="ty">Operation</span>(
+    name = <span class="ty">OperationName</span>(<span class="str">"Deposit"</span>),
+    behaviour = (req, _) <span class="kw">=&gt;</span>
+      <span class="fn">expect</span>((_: <span class="ty">DepositResponse</span>) <span class="kw">=&gt;</span> ().validNel[<span class="ty">SpecViolation</span>])
+        .<span class="fn">thenState</span>((res, s) <span class="kw">=&gt;</span>
+          s.<span class="fn">copy</span>(accounts = s.accounts.<span class="fn">updated</span>(req.accountId, res.newBalance))
+        ),
+    mock = (req, s) <span class="kw">=&gt;</span>
+      <span class="ty">Gen</span>.<span class="fn">constant</span>(
+        <span class="ty">DepositResponse</span>(s.accounts.<span class="fn">getOrElse</span>(req.accountId, <span class="ty">BigDecimal</span>(<span class="num">0</span>)) + req.amount)
+      )
+  )</div>
+    <div class="grid-2 reveal" style="margin-top: 0.5rem;">
+      <div class="card">
+        <h3>behaviour: (Req, S) ⇒ Outcome</h3>
+        <p>The <strong>pure oracle rule</strong>: what response is correct, and how the state transitions.
+        No side effects — just logic.</p>
+      </div>
+      <div class="card">
+        <h3>mock: (Req, S) ⇒ Gen[Res]</h3>
+        <p>Supplies <strong>realistic responses</strong> during offline exploration.
+        Bypassed when replaying against a real system.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ SLIDE 5: WHAT IS TESTED ════════ -->
+<div class="slide" data-slide="5">
+  <div class="slide-inner">
+    <div class="eyebrow reveal">What Gets Tested</div>
+    <h2 class="reveal">spec.allows — one method, one verdict</h2>
+    <p class="lede reveal">The oracle doesn't care <em>how</em> the response arrived — it only asks:
+    "given this request and this state, is this response correct?"</p>
+    <div class="code reveal"><span class="cmt">// The oracle method (from Spec.scala)</span>
+<span class="kw">def</span> <span class="fn">allows</span>[<span class="ty">Req</span>, <span class="ty">Res</span>](op: <span class="ty">Operation</span>[<span class="ty">Req</span>, <span class="ty">Res</span>, <span class="ty">S</span>], req: <span class="ty">Req</span>, res: <span class="ty">Res</span>,
+    profile: <span class="ty">StateProfile</span>[<span class="ty">S</span>])(<span class="kw">using</span> <span class="ty">StateOps</span>[<span class="ty">S</span>]): <span class="ty">Verdict</span>[<span class="ty">S</span>] =
+  <span class="kw">if</span> !operations.<span class="fn">contains</span>(op.name) <span class="kw">then</span>
+    <span class="ty">Verdict</span>.<span class="ty">Deviant</span>(<span class="ty">NonEmptyList</span>.<span class="fn">one</span>(<span class="ty">SpecViolation</span>.<span class="ty">UnknownOperation</span>(op.name)))
+  <span class="kw">else</span> <span class="ty">ProfileEval</span>.<span class="fn">allows</span>(op.name, s <span class="kw">=&gt;</span> op.<span class="fn">behaviour</span>(req, s), res, profile)
+
+<span class="cmt">// A real test (from OracleCoreProperties.scala)</span>
+<span class="kw">val</span> profile = <span class="ty">StateProfile</span>.<span class="fn">one</span>(<span class="ty">BankState</span>(<span class="ty">Map</span>(<span class="str">"alice"</span> <span class="kw">-&gt;</span> <span class="ty">BigDecimal</span>(<span class="num">50</span>))))
+fullSpec.<span class="fn">allows</span>(
+  withdraw,
+  <span class="ty">WithdrawRequest</span>(<span class="str">"alice"</span>, <span class="ty">BigDecimal</span>(<span class="num">30</span>)),
+  <span class="ty">WithdrawResponse</span>.<span class="ty">Success</span>(<span class="ty">BigDecimal</span>(<span class="num">20</span>)),
+  profile
+) <span class="kw">match</span>
+  <span class="kw">case</span> <span class="ty">Verdict</span>.<span class="ty">Conformant</span>(_) <span class="kw">=&gt;</span> <span class="ty">Result</span>.success
+  <span class="kw">case</span> <span class="ty">Verdict</span>.<span class="ty">Deviant</span>(_)    <span class="kw">=&gt;</span> <span class="ty">Result</span>.failure</div>
+    <div class="grid-2 reveal" style="margin-top: 0.5rem;">
+      <div class="card" style="border-color: var(--ok);">
+        <h3><span class="verdict ok">✓ Conformant</span></h3>
+        <p>The response passes the oracle's check. The state transitions forward.
+        The surviving state is carried to the next step.</p>
+        <p style="margin-top: 0.5rem; font-size: 0.85rem;">
+          <strong>Example:</strong> withdraw 30 from alice (balance 50) → response says newBalance=20.
+          Oracle says: correct. State becomes {alice → 20}.
+        </p>
+      </div>
+      <div class="card" style="border-color: var(--err);">
+        <h3><span class="verdict no">✗ Deviant</span></h3>
+        <p>The response fails the oracle's check. Every failed atomic check is accumulated
+        — not just the first. Structured as <code>NonEmptyList[SpecViolation]</code>.</p>
+        <p style="margin-top: 0.5rem; font-size: 0.85rem;">
+          <strong>Example:</strong> withdraw from unknown account → response says Success(-10).
+          Oracle says: wrong. Deviant with accumulated violations.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ SLIDE 6: HOW IT WORKS ════════ -->
+<div class="slide" data-slide="6">
+  <div class="slide-inner">
+    <div class="eyebrow reveal">How It Works</div>
+    <h2 class="reveal">The pipeline: model → explore → generate → replay</h2>
+    <div class="reveal" style="margin: 1.2rem 0; text-align: center;">
+      <div style="display: inline-block;">
+        <span class="flow-box">Spec[S] + InputSet<br><span class="subtle">the model + what to try</span></span><br>
+        <span class="flow-arrow">↓</span><br>
+        <span class="flow-box">GraphExplorer<br><span class="subtle">BFS over mock responses</span></span><br>
+        <span class="flow-arrow">↓</span><br>
+        <span class="flow-box">StateGraph[S]<br><span class="subtle">all reachable states + edges</span></span><br>
+        <span class="flow-arrow">↓</span><br>
+        <span class="flow-box">TestCaseGenerator<br><span class="subtle">state/transition coverage</span></span><br>
+        <span class="flow-arrow">↓</span><br>
+        <span class="flow-box">Vector[TestCase[S]]<br><span class="subtle">sequences to replay</span></span><br>
+        <span class="flow-arrow">↓</span><br>
+        <span class="flow-box" style="border-color: var(--accent); background: rgba(212,111,77,0.1);">TestCaseExecutor<br><span class="subtle">replay against real SUT</span></span><br>
+        <span class="flow-arrow">↓</span><br>
+        <span class="flow-box" style="border-color: var(--ok); background: rgba(37,105,93,0.1);">ExecutionReport<br><span class="subtle">Passed | DeviatesAt(step, violations)</span></span>
+      </div>
+    </div>
+    <p class="reveal subtle" style="text-align: center;">
+      Every edge in the graph is oracle-conformant <strong>by construction</strong>.
+      The executor replays against the real system and validates every response through the
+      <em>same</em> oracle.
+    </p>
+  </div>
+</div>
+
+<!-- ════════ SLIDE 7: BANK EXAMPLE — WITHDRAW ════════ -->
+<div class="slide" data-slide="7">
+  <div class="slide-inner">
+    <div class="eyebrow reveal">The Bank Example</div>
+    <h2 class="reveal">Withdraw: non-determinism as data</h2>
+    <p class="lede reveal">A withdraw might <strong>succeed</strong> (balance decreases) <em>or</em>
+    return <strong>not found</strong> (account doesn't exist). The oracle doesn't know which until
+    it sees the response — so it keeps <em>both</em> branches alive.</p>
+    <div class="code reveal"><span class="cmt">// Withdraw: OneOf(success | notFound | timeout) — from GraphFixtures.scala</span>
+<span class="kw">val</span> withdraw: <span class="ty">Operation</span>[<span class="ty">WithdrawRequest</span>, <span class="ty">WithdrawResponse</span>, <span class="ty">BankState</span>] =
+  <span class="ty">Operation</span>(
+    withdrawName,
+    (req, _) <span class="kw">=&gt;</span>
+      <span class="fn">expect</span>.<span class="fn">oneOf</span>(
+        <span class="ty">NonEmptyList</span>.<span class="fn">of</span>[<span class="ty">Outcome</span>[<span class="ty">WithdrawResponse</span>, <span class="ty">BankState</span>]](
+          <span class="cmt">// branch 1: success — balance decreases</span>
+          <span class="fn">expect</span>(wSuccess).<span class="fn">thenState</span>((res, s) <span class="kw">=&gt;</span>
+            res <span class="kw">match</span>
+              <span class="kw">case</span> <span class="ty">WithdrawResponse</span>.<span class="ty">Success</span>(b) <span class="kw">=&gt;</span>
+                s.<span class="fn">copy</span>(accounts = s.accounts.<span class="fn">updated</span>(req.id, b))
+              <span class="kw">case</span> _ <span class="kw">=&gt;</span> s
+          ),
+          <span class="cmt">// branch 2: not found — state unchanged</span>
+          <span class="fn">expect</span>(wNotFound).<span class="fn">sameState</span>,
+          <span class="cmt">// branch 3: timeout — state unchanged</span>
+          <span class="fn">expect</span>(wTimeout).<span class="fn">sameState</span>
+        )
+      ),
+    (req, s) <span class="kw">=&gt;</span> s.accounts.<span class="fn">get</span>(req.id) <span class="kw">match</span>
+      <span class="kw">case</span> <span class="ty">Some</span>(bal) <span class="kw">if</span> bal &gt;= req.amount <span class="kw">=&gt;</span>
+        <span class="ty">Gen</span>.<span class="fn">constant</span>(<span class="ty">WithdrawResponse</span>.<span class="ty">Success</span>(bal - req.amount))
+      <span class="kw">case</span> _ <span class="kw">=&gt;</span> <span class="ty">Gen</span>.<span class="fn">constant</span>(<span class="ty">WithdrawResponse</span>.<span class="ty">NotFound</span>)
+  )</div>
+    <div class="card reveal" style="margin-top: 0.6rem;">
+      <h3>What happens at runtime</h3>
+      <p><strong>Offline:</strong> the mock decides the response based on balance → BFS records the correct transition.<br>
+      <strong>Replay:</strong> the SUT returns the actual response → <code>spec.allows</code> validates it against all branches.
+      If the SUT says <code>Success(-1)</code> on an empty account, the success-check fails (negative balance),
+      the notFound-check fails (wrong variant), and the timeout-check fails too →
+      <span class="verdict no">Deviant</span> with three accumulated violations.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ SLIDE 8: WHY IT MATTERS ════════ -->
+<div class="slide" data-slide="8">
+  <div class="slide-inner">
+    <div class="eyebrow reveal">Why This Matters</div>
+    <h2 class="reveal">The oracle doesn't just test — it judges</h2>
+    <div class="grid-2 reveal" style="margin-top: 1rem;">
+      <div class="card">
+        <h3>One spec, many uses</h3>
+        <p>The same <code>Spec[S]</code> drives graph exploration, test generation,
+        replay against a real system, and linearizability checking.
+        Write the oracle once; consume it everywhere.</p>
+      </div>
+      <div class="card">
+        <h3>No drift between model and tests</h3>
+        <p>The oracle <em>is</em> the test. There's no separate assertion file to maintain.
+        When the contract changes, the spec changes — and every consumer automatically
+        picks up the new rules.</p>
+      </div>
+      <div class="card">
+        <h3>Formally verified kernel</h3>
+        <p>The survivor/verdict algorithm is proved correct with Stainless (9/9 verification conditions).
+        The oracle that judges your system is itself verified — stronger than any test suite.</p>
+      </div>
+      <div class="card">
+        <h3>Contract-derived specs</h3>
+        <p>Derive <code>Operation</code> slots directly from a Smithy IDL.
+        A new operation breaks the spec build until the rule is written —
+        the oracle <strong>cannot silently drift</strong> from the contract.</p>
+      </div>
+    </div>
+    <div class="reveal center" style="margin-top: 1.5rem;">
+      <h3 style="color: var(--accent-deep);">Separate the standard from the sampling.</h3>
+      <p class="subtle" style="margin-top: 0.5rem;">
+        The oracle knows what "correct" means. Everything else is just choosing what to try.
+      </p>
+    </div>
+  </div>
+</div>
+
+</div><!-- /deck -->
+
+<!-- ════════ Navigation bar ════════ -->
+<div class="nav-bar">
+  <button onclick="nav(-1)">◀ Prev</button>
+  <span class="counter"><span id="current">1</span> / <span id="total">8</span></span>
+  <button onclick="nav(1)">Next ▶</button>
+</div>
+
+<script>
+(function() {
+  const slides = document.querySelectorAll('.slide');
+  const total = slides.length;
+  let current = 0;
+
+  document.getElementById('total').textContent = total;
+
+  function show(index) {
+    if (index < 0 || index >= total) return;
+    slides.forEach((s, i) => {
+      s.classList.remove('active', 'prev');
+      if (i === index) s.classList.add('active');
+      else if (i < index) s.classList.add('prev');
+    });
+    current = index;
+    document.getElementById('current').textContent = current + 1;
+    document.getElementById('progress').style.width = ((current + 1) / total * 100) + '%';
+  }
+
+  window.nav = function(dir) { show(current + dir); };
+
+  document.addEventListener('keydown', function(e) {
+    switch(e.key) {
+      case 'ArrowRight':
+      case ' ':
+      case 'PageDown':
+        e.preventDefault(); show(current + 1); break;
+      case 'ArrowLeft':
+      case 'PageUp':
+        e.preventDefault(); show(current - 1); break;
+      case 'Home': show(0); break;
+      case 'End': show(total - 1); break;
+    }
+  });
+
+  let touchStartX = 0;
+  document.addEventListener('touchstart', function(e) { touchStartX = e.touches[0].clientX; });
+  document.addEventListener('touchend', function(e) {
+    const diff = e.changedTouches[0].clientX - touchStartX;
+    if (Math.abs(diff) > 50) show(current + (diff > 0 ? -1 : 1));
+  });
+})();
+</script>
+</body>
+</html>

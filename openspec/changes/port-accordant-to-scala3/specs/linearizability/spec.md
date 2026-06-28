@@ -14,8 +14,8 @@ kernel; only the parallel execution touches `IO`.
 | `SpecViolation` | enum | `domain` (introduced by spec:oracle-core; gains `NotLinearizable` variant here) |
 | `OperationCall[S]` / `InputSet[S]` | sealed trait / case class | `spec` (introduced by spec:input-sets) |
 | `StateGraph[S]` / `GraphExplorer` | case class / object | `engine` (introduced by spec:state-graph) |
-| `TestCase[S]` / `TestCasePersistence` | case class / object | `domain`/`persist` (introduced by spec:test-generation) |
-| `SystemUnderTest[F]` / `ExecutionHooks` / `RefSut` | trait / case class / fixture | `engine` (introduced by spec:test-execution) |
+| `TestCase[S]` / `TestCasePersistence` | case class / object | `spec`/`persist` (introduced by spec:test-generation) |
+| `SystemUnderTest[F[_], S]` / `ExecutionHooks` / `RefSut` | trait / case class / fixture | `engine` (introduced by spec:test-execution) |
 | `MaxDepth` | opaque type | `domain` (introduced by spec:state-graph) |
 | `BankState` fixture | test case class | (introduced by spec:oracle-core) |
 

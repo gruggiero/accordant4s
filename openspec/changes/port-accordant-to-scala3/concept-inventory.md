@@ -25,12 +25,13 @@
 | `StateProfile[S]` | `NonEmptyList[S]` | non-empty + `Eq`-dedup (smart ctors `one`/`of`; no public ctor from a possibly-empty collection) | `io.gruggiero.accordant4s.domain` | oracle-core |
 | `MaxDepth` | `Int` | `Positive` (via `RefinedType`) — mandatory exploration bound | `io.gruggiero.accordant4s.domain` | state-graph |
 | `MaxRetryCount` | `Int` | `Positive` (via `RefinedType`) — bound on idempotent connection retries | `io.gruggiero.accordant4s.domain` | http-binding |
+| `ParallelWidth` | `Int` | `Positive & LessEqual[4]` (via `RefinedType`) — caps parallel section (≤ 4! = 24 permutations) | `io.gruggiero.accordant4s.domain` | linearizability |
 
 ## Sealed Traits and Enums
 
 | Type | Kind | Variants | Package | Introduced By |
 |------|------|----------|---------|---------------|
-| `SpecViolation` | `enum derives CanEqual` | `CheckFailed(op, detail)`, `UnknownOperation(name)`, `NoBranchMatched(op, branchFailures)`, `ProfileExhausted(op)` | `io.gruggiero.accordant4s.domain` | oracle-core |
+| `SpecViolation` | `enum derives CanEqual` | `CheckFailed(op, detail)`, `UnknownOperation(name)`, `NoBranchMatched(op, branchFailures)`, `ProfileExhausted(op)`, `NotLinearizable(op, observedCount, orderingsTried)` | `io.gruggiero.accordant4s.domain` | oracle-core (+ linearizability variant) |
 | `Outcome[Res, S]` | `enum derives CanEqual` | `Same(check)`, `Next(check, transition)`, `OneOf(branches)` | `io.gruggiero.accordant4s.domain` | oracle-core |
 | `Verdict[S]` | `enum derives CanEqual` | `Conformant(StateProfile[S])`, `Deviant(NonEmptyList[SpecViolation])` | `io.gruggiero.accordant4s.domain` | oracle-core |
 | `OperationCall[S]` | `sealed trait` (existential `type Req`/`type Res` members; `op`/`req`/`label`; companion `Aux[S,R,Re]` refinement, `apply`, `given canEqual`; private `Impl` case class) | `io.gruggiero.accordant4s.spec` | input-sets |
@@ -38,6 +39,7 @@
 | `PersistenceError` | `enum derives CanEqual` | `DecodeFailed(io.circe.Error)`, `VersionMismatch(found: Int, expected: Int)` | `io.gruggiero.accordant4s.persist` | test-generation |
 | `ExecutionReport[S]` | `enum derives CanEqual` | `Passed(stepsRun: Int)`, `DeviatesAt(stepIndex: Int, violations: NonEmptyList[SpecViolation], reproPath: TestCase[S])` (+ `isPassed`) | `io.gruggiero.accordant4s.engine` | test-execution |
 | `TransportOutcome` | `enum derives CanEqual` | `Completed(status: org.http4s.Status, body: String)`, `TimedOut`, `ConnectionFailed(detail: String)` | `io.gruggiero.accordant4s.http` | http-binding |
+| `ConcurrentReport[S]` | `enum derives CanEqual` | `Linearizable(witnessOrdering: List[ObservedResult[S]], endProfile: StateProfile[S])`, `RaceDetected(observed: NonEmptyList[ObservedResult[S]], orderingsTried: Int, reproCase: ConcurrentTestCase[S])` | `io.gruggiero.accordant4s.engine` | linearizability |
 
 ## Case Classes (Domain Value Objects)
 
@@ -58,6 +60,8 @@
 | `HttpRoute[Req]` | `uri: Req => org.http4s.Uri`, `encode: Req => org.http4s.Request[IO]` (companion `jsonPost[Req](uri)(using EntityEncoder[IO, Req])`) | `io.gruggiero.accordant4s.http` | http-binding |
 | `HttpBinding[S]` | `endpoints: Map[OperationName, Endpoint[S]]` (`endpointFor(call)`; companion `empty`, `register(op, route, mapper): HttpBinding => HttpBinding`, `check(spec, binding): Either[Set[OperationName], HttpBinding]`); `Endpoint[S]` is a sealed trait (existential slot: `encode(call): IO[Request[IO]]`, `decode(outcome): IO[Any]`; built from `Operation[Req, Res, S]`) | `io.gruggiero.accordant4s.http` | http-binding |
 | `EndpointSlot` | `name: OperationName`, `endpoint: SmithyEndpoint` (+ `shapeId: ShapeId`); `SmithyEndpoint` is a sealed trait (existential wrapper around `smithy4s.Endpoint`) | `io.gruggiero.accordant4s.smithy` | smithy4s-derivation |
+| `ConcurrentTestCase[S]` | `name: CallLabel`, `initial: S`, `prefix: List[OperationCall[S]]`, `parallel: NonEmptyList[OperationCall[S]]`, `suffix: List[OperationCall[S]]` | `io.gruggiero.accordant4s.spec` | linearizability |
+| `ObservedResult[S]` | sealed trait: `call: OperationCall[S]`, `response: call.Res` (path-dependent, like `OperationCall`); companion `Aux[S, Re]`, `apply`, `given canEqual` | `io.gruggiero.accordant4s.engine` | linearizability |
 
 ## Service Traits
 
@@ -82,6 +86,9 @@
 | `TestCaseExecutor` | pure object (`engine`) | `run[F[_], S](spec, testCase, sut, hooks)(using Async[F], StateOps[S]): F[ExecutionReport[S]]` (step-wise oracle replay; per step executes the call, validates the ACTUAL response via `spec.allows`, threads the surviving profile, halts at the first `Deviant`; `bracket` runs `sut.reset`+`beforeEach` before step 1 and `afterEach` ALWAYS incl. error/cancellation; errors re-raised, never converted to verdicts) | `io.gruggiero.accordant4s.engine` | test-execution |
 | `SmithyOps` | pure object (`smithy`) | `forService[Alg[_[_,_,_,_,_]]](service: smithy4s.Service[Alg]): Vector[EndpointSlot]` (one slot per smithy4s endpoint, named by the ShapeId) | `io.gruggiero.accordant4s.smithy` | smithy4s-derivation |
 | `SpecBuilder[S]` | builder (`smithy`) | `assign[Req,Res](name, behaviour, mock): SpecBuilder[S]`, `build: Either[NonEmptyList[OperationName], Spec[S]]` (complete-or-fail: Right iff every slot received a behaviour; Left lists the missing names) | `io.gruggiero.accordant4s.smithy` | smithy4s-derivation |
+| `Linearization` | pure object (`engine`) | `findOrdering[S](spec, profile, observed: NonEmptyList[ObservedResult[S]])(using StateOps[S]): Option[(List[ObservedResult[S]], StateProfile[S])]` (∃-permutation search; brute-force over ≤4! permutations; returns first witness + deduplicated union of witness end-profiles, or None) | `io.gruggiero.accordant4s.engine` | linearizability |
+| `ConcurrentTestCaseGenerator` | pure object (`engine`) | `generateConcurrent[S](graph, inputs, width: ParallelWidth, seed)(using StateOps[S]): Vector[ConcurrentTestCase[S]]` (graph-valid prefix + 2..width parallel section + suffix; deterministic) | `io.gruggiero.accordant4s.engine` | linearizability |
+| `ConcurrentExecutor` | object (`engine`) | `run[S](spec, testCase: ConcurrentTestCase[S], sut: SystemUnderTest[IO, S])(using Async[IO], StateOps[S]): IO[ConcurrentReport[S]]` (prefix replay + `parSequence` parallel + linearizability check + suffix) | `io.gruggiero.accordant4s.engine` | linearizability |
 
 ## Smithy Models
 

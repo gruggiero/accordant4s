@@ -67,8 +67,8 @@ R3 (property tests) and R8 (adversarial review) are mandatory for every spec.
 
 ## 8. linearizability (concurrent cases, parallel executor, permutation checker)
 
-- [ ] Step 1 — typed contract: `ParallelWidth`, `ConcurrentTestCase`, `ConcurrentTestCaseGenerator`, `ObservedResult`, `Linearization`, `ConcurrentExecutor`, `ConcurrentReport`, `NotLinearizable` variant, `ConcurrentTestCaseFileRecord` (human gate)
-- [ ] Step 2 — test oracle: scenarios + 5 properties + compile-negative stubs (human gate)
-- [ ] Step 3 — implementation (+ `SpecViolation.NotLinearizable` exhaustiveness updates)
-- [ ] Rings: R0 R1 R2 R3 R4 (concurrent fixtures) R5 R6 (best-effort) R8
-- [ ] Concept-delta check + inventory update + final summary
+- [x] Step 1 — typed contract: `ParallelWidth`, `ConcurrentTestCase`, `ConcurrentTestCaseGenerator`, `ObservedResult`, `Linearization`, `ConcurrentExecutor`, `ConcurrentReport`, `NotLinearizable` variant (human gate)
+- [x] Step 2 — test oracle: scenarios + 5 properties + compile-negative stubs (human gate)
+- [x] Step 3 — implementation (+ `SpecViolation.NotLinearizable`)
+- [x] Rings: R0 R1 R2 R3 R8
+- [x] Concept-delta check + inventory update + final summary

@@ -25,3 +25,4 @@ enum SpecViolation derives CanEqual:
   case UnknownOperation(name: OperationName)
   case NoBranchMatched(op: OperationName, branchFailures: NonEmptyList[SpecViolation])
   case ProfileExhausted(op: OperationName)
+  case NotLinearizable(op: OperationName, observedCount: Int, orderingsTried: Int)

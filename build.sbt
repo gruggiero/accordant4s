@@ -35,6 +35,10 @@ lazy val core = (project in file("core"))
   ) // bridge test: real ProfileEval vs the Stainless model (model compiled, not re-verified, on core/test)
   .settings(
     name := "accordant4s-core",
+    // ConcurrentExecutor's existential bridge (pairing an erased call.Res with
+    // the SUT response) needs one controlled `asInstanceOf`, sound by the
+    // existential invariant. Exempt that one file (same justification as http4s).
+    wartremoverExcluded += (ThisBuild / baseDirectory).value / "core" / "src" / "main" / "scala" / "io" / "gruggiero" / "accordant4s" / "engine" / "ConcurrentExecutor.scala",
     libraryDependencies ++= Seq(
       CatsEffect,
       FS2,
