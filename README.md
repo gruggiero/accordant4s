@@ -68,7 +68,7 @@ indefinite failures, or a clean `allows` oracle usable outside tests.
 
 ## Relationship to Microsoft Accordant
 
-`accordant4s` is a Scala 3 reimagining of **Microsoft Accordant**, a .NET
+`accordant4s` is a Scala 3 reimagining of **[Microsoft Accordant](https://github.com/microsoft/accordant)**, a .NET
 model-based testing framework built around the same spec-as-oracle idea. (The
 analysis this port is based on lives in
 [`docs/accordant-scala3-report.md`](docs/accordant-scala3-report.md).)
@@ -434,7 +434,7 @@ Agent skills (`/opsx:*`): `explore`, `propose`, `apply`, `next-spec`,
 
 ## References
 
-- **Microsoft Accordant** — the original .NET model-based testing framework this
+- **[Microsoft Accordant](https://github.com/microsoft/accordant)** — the original .NET model-based testing framework this
   project reimagines (assemblies: `Accordant`, `Accordant.Operations`,
   `Accordant.SourceGenerator`, `Accordant.Choose`, `Accordant.Operations.Http`).
 - [`docs/accordant-scala3-report.md`](docs/accordant-scala3-report.md) — the
